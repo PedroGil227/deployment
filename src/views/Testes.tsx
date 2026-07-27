@@ -29,7 +29,7 @@ export function Testes() {
   const [edit, setEdit] = useState<any>(null);
   const [importMsg, setImportMsg] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
-  const items = pastaH === null ? [] : db.testes.filter((t) => (!f.tipoTeste || t.tipoTeste === f.tipoTeste) && (!f.ambiente || t.ambiente === f.ambiente) && pastaMatch(pastaH, "", t.pastaHospital, t.pastaOperadora));
+  const items = db.testes.filter((t) => (!f.tipoTeste || t.tipoTeste === f.tipoTeste) && (!f.ambiente || t.ambiente === f.ambiente));
   const media = items.length ? (items.reduce((s, t) => s + (+t.nota || 0), 0) / items.length).toFixed(1) : "—";
 
   const onImportFile = async (file: File) => {
@@ -43,7 +43,6 @@ export function Testes() {
           d.testes.push({
             id: uid("t"), data: new Date().toISOString().slice(0, 10), tipoConta: "",
             tipoTeste: p.tipoTeste, ambiente: "Homologação", dono: "", descricao: p.descricao, nota: 0,
-            ...pastaStamp(pastaH!, ""),
           });
         });
       });
@@ -56,8 +55,6 @@ export function Testes() {
   return (
     <div>
       <div className="page-head"><div className="h1">Testes</div><p>Registro dos testes de regras e features do produto. A nota (0–10) indica o quanto foi aprovado — 10 = 100% validado.</p></div>
-      <PastaBar items={db.testes} hospital={pastaH} onChange={(h) => setPastaH(h)} />
-      {pastaH !== null && (<>
       <div className="filters">
         <select className="select-sm" value={f.tipoTeste} onChange={(e) => setF({ ...f, tipoTeste: e.target.value })}><option value="">Tipo de teste</option><option>Regra</option><option>Feature Produto</option></select>
         <select className="select-sm" value={f.ambiente} onChange={(e) => setF({ ...f, ambiente: e.target.value })}><option value="">Ambiente</option><option>Homologação</option><option>Produção</option></select>
@@ -80,8 +77,7 @@ export function Testes() {
         </tr>))}
         {!items.length && <tr><td colSpan={8}><div className="empty">Nenhum teste registrado.</div></td></tr>}</tbody>
       </table></div></div>
-      </>)}
-      {edit && <TesteEditor t={edit} onClose={() => setEdit(null)} onSave={(data: any) => { upd((d: DB) => { if (edit.id) Object.assign(d.testes.find((x) => x.id === edit.id)!, data); else d.testes.push({ id: uid("t"), ...pastaStamp(pastaH!, ""), ...data }); }); setEdit(null); }} />}
+      {edit && <TesteEditor t={edit} onClose={() => setEdit(null)} onSave={(data: any) => { upd((d: DB) => { if (edit.id) Object.assign(d.testes.find((x) => x.id === edit.id)!, data); else d.testes.push({ id: uid("t"), ...data }); }); setEdit(null); }} />}
     </div>
   );
 }

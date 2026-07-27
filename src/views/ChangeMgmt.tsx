@@ -8,9 +8,16 @@ export function ChangeMgmt() {
   const { db } = useStore();
   const [pastaH, setPastaH] = useState<string | null>(null);
   const allRows = deriveTobe(db);
-  const rows = pastaH === null ? [] : allRows.filter((r) => r.proc && pastaMatch(pastaH, "", r.proc.pastaHospital, r.proc.pastaOperadora));
+  const rows = allRows;
   const [f, setF] = useState({ owner: "", status: "", setor: "" });
-  const filtered = rows.filter((r) => (!f.owner || r.owner === f.owner) && (!f.status || r.statusFuturo === f.status) && (!f.setor || (r.proc && r.proc.setor === f.setor)));
+  const parseOrd = (v?: string) => { const n = parseFloat(String(v ?? "").replace(",", ".")); return isNaN(n) ? Infinity : n; };
+  const filtered = rows.filter((r) => (!f.owner || r.owner === f.owner) && (!f.status || r.statusFuturo === f.status) && (!f.setor || (r.proc && r.proc.setor === f.setor)))
+    .sort((a, b) => {
+      const pa = parseOrd(a.proc?.ordem), pb = parseOrd(b.proc?.ordem);
+      if (pa !== pb) return pa - pb;
+      if (a.processo !== b.processo) return String(a.processo).localeCompare(String(b.processo));
+      return parseOrd(a.ordem) - parseOrd(b.ordem);
+    });
   const rivio = rows.filter((r) => r.owner === "Rivio").length;
   const hosp = rows.filter((r) => r.owner === "Hospital").length;
   const eli = rows.filter((r) => r.statusFuturo === "Eliminada").length;
@@ -21,8 +28,6 @@ export function ChangeMgmt() {
   return (
     <div>
       <div className="page-head"><div className="h1">Change Management</div><p>Plano de transição: o que muda em cada ação, quem assume (Rivio ou Hospital) e o impacto operacional por setor. Base para comunicação e treinamento na virada AS IS → To Be.</p></div>
-      <PastaBar items={db.processos} hospital={pastaH} onChange={(h) => setPastaH(h)} />
-      {pastaH !== null && (<>
       <div className="grid" style={{ gridTemplateColumns: "repeat(4,1fr)" }}>
         <Stat label="Ações assumidas pela Rivio" val={rivio} color="var(--purple)" />
         <Stat label="Mantidas pelo Hospital" val={hosp} color="var(--blue)" />
@@ -38,8 +43,8 @@ export function ChangeMgmt() {
       <div className="tbl-wrap"><div className="tbl-scroll"><table>
         <thead><tr><th>Ação</th><th>Processo</th><th>Setor</th><th>Status futuro</th><th>Owner</th><th>Impacto</th><th>Unit of Work</th></tr></thead>
         <tbody>{filtered.map((r) => { const im = impacto(r); return (<tr key={r.id}>
-          <td style={{ fontWeight: 600, minWidth: 180 }}>{r.nome}</td>
-          <td className="muted">{r.proc ? r.proc.nome : "—"}</td>
+          <td style={{ fontWeight: 600, minWidth: 180 }}>{r.ordem && <span className="chip" style={{ marginRight: 6 }} title="Sequência da ação">{r.ordem}</span>}{r.nome}</td>
+          <td className="muted">{r.proc ? (<>{r.proc.ordem && <span className="chip" style={{ marginRight: 6 }} title="Sequência do processo">{r.proc.ordem}</span>}{r.proc.nome}</>) : "—"}</td>
           <td className="muted">{r.proc ? nameById(db.setores, r.proc.setor) : "—"}</td>
           <td><StatusBadge s={r.statusFuturo} fn={futuroClass} /></td>
           <td><Badge cls={ownerClass(r.owner)}>{r.owner}</Badge></td>
@@ -48,7 +53,6 @@ export function ChangeMgmt() {
         </tr>); })}
         {!filtered.length && <tr><td colSpan={7}><div className="empty">Sem ações mapeadas.</div></td></tr>}</tbody>
       </table></div></div>
-      </>)}
     </div>
   );
 }

@@ -8,7 +8,7 @@ export function ToBe() {
   const { db, upd } = useStore();
   const [pastaH, setPastaH] = useState<string | null>(null);
   const allRows = deriveTobe(db);
-  const rows = pastaH === null ? [] : allRows.filter((r) => r.proc && pastaMatch(pastaH, "", r.proc.pastaHospital, r.proc.pastaOperadora));
+  const rows = allRows;
   const [f, setF] = useState({ operadora: "", atendimento: "", responsavel: "", status: "", owner: "", gap: "" });
   const [uowPick, setUowPick] = useState<string | null>(null);
   const [uowPos, setUowPos] = useState<{ top: number; left: number } | null>(null);
@@ -18,10 +18,20 @@ export function ToBe() {
     setUowPos({ top: rect.bottom + 4, left: rect.left });
     setUowPick(rid);
   };
+  // Ordena por "sequência": primeiro o campo ordem do PROCESSO, agrupando as ações do mesmo
+  // processo (mesmo quando dois processos têm o mesmo número), depois o campo ordem da AÇÃO.
+  // Valores vazios/não numéricos vão para o fim.
+  const parseOrd = (v?: string) => { const n = parseFloat(String(v ?? "").replace(",", ".")); return isNaN(n) ? Infinity : n; };
   const filtered = rows.filter((r) =>
     (!f.operadora || r.operadoras.includes(f.operadora)) && (!f.atendimento || r.tiposAtendimento.includes(f.atendimento)) &&
     (!f.responsavel || r.responsavel === f.responsavel) && (!f.status || r.statusFuturo === f.status) &&
-    (!f.owner || r.owner === f.owner) && (f.gap === "" || (f.gap === "sim" ? r.isGap : !r.isGap)));
+    (!f.owner || r.owner === f.owner) && (f.gap === "" || (f.gap === "sim" ? r.isGap : !r.isGap)))
+    .sort((a, b) => {
+      const pa = parseOrd(a.proc?.ordem), pb = parseOrd(b.proc?.ordem);
+      if (pa !== pb) return pa - pb;
+      if (a.processo !== b.processo) return String(a.processo).localeCompare(String(b.processo));
+      return parseOrd(a.ordem) - parseOrd(b.ordem);
+    });
   const setStatus = (aid: string, val: string) => upd((d) => { const t = d.tobe[aid] || { statusFuturo: "", owner: "Hospital", uows: [], obs: "" }; t.statusFuturo = val; if (val !== "Executada pelo produto") t.uows = []; if (val === "Executada pelo produto") t.owner = "Rivio"; d.tobe[aid] = t; });
   const setOwner = (aid: string, val: string) => upd((d) => { const t = d.tobe[aid] || { statusFuturo: "Executada por ação humana", owner: val, uows: [], obs: "" }; t.owner = val; d.tobe[aid] = t; });
   const toggleUow = (aid: string, u: string) => upd((d) => { const t = d.tobe[aid] || { statusFuturo: "Executada pelo produto", owner: "Rivio", uows: [], obs: "" }; const cur = t.uows || []; t.uows = cur.includes(u) ? cur.filter((x) => x !== u) : [...cur, u]; d.tobe[aid] = t; });
@@ -30,8 +40,6 @@ export function ToBe() {
   return (
     <div>
       <div className="page-head"><div className="h1">To Be</div><p>Gerado a partir das ações do AS IS. Defina o status futuro, o owner (Rivio ou Hospital) e as Units of Work. Ação marcada como "Executada pelo produto" sem UoW vira Gap automaticamente.</p></div>
-      <PastaBar items={db.processos} hospital={pastaH} onChange={(h) => setPastaH(h)} />
-      {pastaH !== null && (<>
       <div className="filters">
         <select className="select-sm" value={f.operadora} onChange={(e) => setF({ ...f, operadora: e.target.value })}><option value="">Operadora</option>{db.operadoras.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}</select>
         <select className="select-sm" value={f.atendimento} onChange={(e) => setF({ ...f, atendimento: e.target.value })}><option value="">Atendimento</option>{db.tiposAtendimento.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}</select>
@@ -44,8 +52,8 @@ export function ToBe() {
       <div className="tbl-wrap"><div className="tbl-scroll"><table>
         <thead><tr><th>Ação</th><th>Processo</th><th>Operadora</th><th>Atendimento</th><th>Status futuro</th><th>Owner</th><th>Unit of Work / O que mudou</th><th>Gap</th></tr></thead>
         <tbody>{filtered.map((r) => (<tr key={r.id}>
-          <td style={{ minWidth: 180 }}><div style={{ fontWeight: 600 }}>{r.nome}</div></td>
-          <td className="muted">{r.proc ? r.proc.nome : "—"}</td>
+          <td style={{ minWidth: 180 }}><div style={{ fontWeight: 600 }}>{r.ordem && <span className="chip" style={{ marginRight: 6 }} title="Sequência da ação">{r.ordem}</span>}{r.nome}</div></td>
+          <td className="muted">{r.proc ? (<>{r.proc.ordem && <span className="chip" style={{ marginRight: 6 }} title="Sequência do processo">{r.proc.ordem}</span>}{r.proc.nome}</>) : "—"}</td>
           <td><Chips items={namesByIds(db.operadoras, r.operadoras)} /></td>
           <td><Chips items={namesByIds(db.tiposAtendimento, r.tiposAtendimento)} /></td>
           <td><select className="select-sm" value={r.statusFuturo} onChange={(e) => setStatus(r.id, e.target.value)}>{STATUS_FUTURO.map((s) => <option key={s}>{s}</option>)}</select></td>
@@ -67,7 +75,6 @@ export function ToBe() {
           {db.unitsOfWork.map((u) => (<label key={u.id} className="row" style={{ gap: 6, padding: "3px 0", cursor: "pointer" }}><input type="checkbox" checked={r.uows.includes(u.id)} onChange={() => toggleUow(r.id, u.id)} /><span style={{ fontSize: 12 }}>{u.id} · {u.nome}</span></label>))}
         </div>
       </>); })()}
-      </>)}
     </div>
   );
 }

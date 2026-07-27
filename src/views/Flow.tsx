@@ -112,19 +112,19 @@ export function FlowBuilder() {
     return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
   }, [linkFrom]);
   const drawerNode = db.processos.find((p) => p.id === drawerId);
-  const procs = pastaH === null ? [] : db.processos.filter((p) => pastaMatch(pastaH, "", p.pastaHospital, p.pastaOperadora));
+  const procs = db.processos;
   const procIds = new Set(procs.map((p) => p.id));
   const conexoesInPasta = db.conexoes.filter((c) => procIds.has(c.from) && procIds.has(c.to));
 
   const addNode = (tipo: "processo" | "decisao") => {
     const sl = canvasRef.current ? canvasRef.current.scrollLeft : 0, st = canvasRef.current ? canvasRef.current.scrollTop : 0;
-    const n: Processo = { id: uid("p"), nome: tipo === "decisao" ? "Nova decisão" : "Novo processo", descricao: "", tipo, x: 120 + sl, y: 120 + st, tiposAtendimento: [], operadoras: [], sistema: "", setor: "", responsavel: "", ...pastaStamp(pastaH!, "") };
+    const n: Processo = { id: uid("p"), nome: tipo === "decisao" ? "Nova decisão" : "Novo processo", descricao: "", tipo, x: 120 + sl, y: 120 + st, tiposAtendimento: [], operadoras: [], sistema: "", setor: "", responsavel: "" };
     upd((d: DB) => { d.processos.push(n); }); setSelected(n.id); setEditNode(n);
   };
   const addChild = (parent: Processo) => {
     const childCount = db.conexoes.filter((c) => c.from === parent.id).length;
     const isDec = parent.tipo === "decisao";
-    const n: Processo = { id: uid("p"), nome: isDec ? "Novo caminho" : "Novo processo", descricao: "", tipo: "processo", x: parent.x + 250, y: parent.y + childCount * 140, tiposAtendimento: [...parent.tiposAtendimento], operadoras: [...parent.operadoras], sistema: "", setor: "", responsavel: "", ...pastaStamp(pastaH!, "") };
+    const n: Processo = { id: uid("p"), nome: isDec ? "Novo caminho" : "Novo processo", descricao: "", tipo: "processo", x: parent.x + 250, y: parent.y + childCount * 140, tiposAtendimento: [...parent.tiposAtendimento], operadoras: [...parent.operadoras], sistema: "", setor: "", responsavel: "" };
     const edgeId = uid("e");
     upd((d: DB) => { d.processos.push(n); d.conexoes.push({ id: edgeId, from: parent.id, to: n.id, label: "" }); });
     setSelected(n.id);
@@ -135,10 +135,6 @@ export function FlowBuilder() {
 
   return (
     <>
-      <div style={{ padding: pastaH !== null ? "14px 16px 0" : "14px 16px" }}>
-        <PastaBar items={db.processos} hospital={pastaH} onChange={(h) => setPastaH(h)} />
-      </div>
-      {pastaH === null ? null : (<>
       <div className="flow-toolbar">
         <button className="btn primary sm" onClick={() => addNode("processo")}><Ic d={icons.plus} size={13} />Processo</button>
         <button className="btn sm" onClick={() => addNode("decisao")}><Ic d={icons.plus} size={13} />Decisão</button>
@@ -188,7 +184,6 @@ export function FlowBuilder() {
           {!procs.length && <div style={{ position: "absolute", top: 140, left: 140 }} className="dim">Clique em <b>Processo</b> para começar a desenhar o fluxo AS IS.</div>}
         </div>
       </div>
-      </>)}
 
       {drawerNode && (<div className="drawer-overlay" onClick={() => setDrawerId(null)}>
         <div className="drawer" onClick={(e) => e.stopPropagation()}>

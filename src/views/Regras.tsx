@@ -12,9 +12,9 @@ export function Regras() {
   const [editR, setEditR] = useState<any>(null);
   const [f, setF] = useState({ operadora: "", item: "" });
   const matchP = (p: any) => (!f.operadora || (p.operadoras || []).includes(f.operadora)) && (!f.item || (p.itensConta || []).includes(f.item));
-  const matchR = (r: any) => (!f.operadora || (r.operadoras || []).includes(f.operadora)) && (!f.item || (r.itensConta || []).includes(f.item)) && pastaH !== null && pastaMatch(pastaH, "", r.pastaHospital, r.pastaOperadora);
+  const matchR = (r: any) => (!f.operadora || (r.operadoras || []).includes(f.operadora)) && (!f.item || (r.itensConta || []).includes(f.item));
   const problemas = db.problemas.filter(matchP);
-  const regras = pastaH === null ? [] : db.regras.filter(matchR);
+  const regras = db.regras.filter(matchR);
   return (
     <div>
       <div className="page-head"><div className="h1">Regras de Auditoria</div><p>Cadastre problemas (dores e motivos de glosa) com um score de esforço (0–10) e as regras que os endereçam. Problemas são uma biblioteca compartilhada; as regras que os endereçam são específicas de cada hospital/operadora.</p></div>
@@ -38,8 +38,6 @@ export function Regras() {
           {!problemas.length && <div className="empty">Nenhum problema.</div>}
         </div>
         <div>
-          <PastaBar items={db.regras} hospital={pastaH} onChange={(h) => setPastaH(h)} />
-          {pastaH !== null && (<>
           <div className="between" style={{ marginBottom: 10 }}><div className="h2">Regras <span className="chip">{regras.length}</span></div><button className="btn primary sm" onClick={() => setEditR({})}><Ic d={icons.plus} size={13} />Regra</button></div>
           <div className="tbl-wrap"><div className="tbl-scroll"><table>
             <thead><tr><th>Regra</th><th>Item</th><th>Operadora</th><th>Problemas</th><th>Status</th><th /></tr></thead>
@@ -53,11 +51,10 @@ export function Regras() {
             </tr>))}
             {!regras.length && <tr><td colSpan={6}><div className="empty">Nenhuma regra.</div></td></tr>}</tbody>
           </table></div></div>
-          </>)}
         </div>
       </div>
       {editP && <ProblemaEditor p={editP} onClose={() => setEditP(null)} onSave={(data: any) => { upd((d: DB) => { if (editP.id) Object.assign(d.problemas.find((x) => x.id === editP.id)!, data); else d.problemas.push({ id: uid("pb"), ...data }); }); setEditP(null); }} />}
-      {editR && <RegraEditor r={editR} onClose={() => setEditR(null)} onSave={(data: any) => { upd((d: DB) => { if (editR.id) Object.assign(d.regras.find((x) => x.id === editR.id)!, data); else d.regras.push({ id: uid("r"), ...pastaStamp(pastaH!, ""), ...data }); }); setEditR(null); }} />}
+      {editR && <RegraEditor r={editR} onClose={() => setEditR(null)} onSave={(data: any) => { upd((d: DB) => { if (editR.id) Object.assign(d.regras.find((x) => x.id === editR.id)!, data); else d.regras.push({ id: uid("r"), ...data }); }); setEditR(null); }} />}
     </div>
   );
 }
