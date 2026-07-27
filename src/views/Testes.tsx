@@ -1,24 +1,72 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import { useStore } from "../store";
 import { uid, nameById } from "../lib/derive";
-import { Badge, Modal, Field, Ic, icons } from "../ui";
+import { Badge, Modal, Field, Ic, icons, PastaBar, pastaMatch, pastaStamp } from "../ui";
 import type { DB } from "../types";
+
+// Lê a aba "Plano - <Hospital>" gerada pelo relatório de plano de testes estatístico
+// e converte cada regra num registro de Teste pendente (nota 0, ainda não executado).
+function parseTestPlan(buf: ArrayBuffer) {
+  const wb = XLSX.read(buf, { type: "array" });
+  const sheetName = wb.SheetNames.find((n) => /^plano/i.test(n)) || wb.SheetNames[0];
+  const json: any[] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: "" });
+  return json.map((raw) => {
+    const conteudo = String(raw["Conteúdo exigido na conta de teste"] ?? "").trim();
+    const descricaoRegra = String(raw["Descrição / Nome da Regra"] ?? "").trim();
+    const confianca = Number(raw["Confiança da associação"] ?? 0) || 0;
+    return {
+      descricao: conteudo || (descricaoRegra ? "Reproduzir a condição: " + descricaoRegra : ""),
+      tipoTeste: confianca > 0 ? "Feature Produto" : "Regra",
+    };
+  }).filter((r) => r.descricao);
+}
 
 export function Testes() {
   const { db, upd } = useStore();
+  const [pastaH, setPastaH] = useState<string | null>(null);
   const [f, setF] = useState({ tipoTeste: "", ambiente: "" });
   const [edit, setEdit] = useState<any>(null);
-  const items = db.testes.filter((t) => (!f.tipoTeste || t.tipoTeste === f.tipoTeste) && (!f.ambiente || t.ambiente === f.ambiente));
+  const [importMsg, setImportMsg] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+  const items = pastaH === null ? [] : db.testes.filter((t) => (!f.tipoTeste || t.tipoTeste === f.tipoTeste) && (!f.ambiente || t.ambiente === f.ambiente) && pastaMatch(pastaH, "", t.pastaHospital, t.pastaOperadora));
   const media = items.length ? (items.reduce((s, t) => s + (+t.nota || 0), 0) / items.length).toFixed(1) : "—";
+
+  const onImportFile = async (file: File) => {
+    setImportMsg("");
+    try {
+      const buf = await file.arrayBuffer();
+      const parsed = parseTestPlan(buf);
+      if (!parsed.length) { setImportMsg("Nenhuma linha reconhecida — confira se é a planilha do Plano de Testes."); return; }
+      upd((d: DB) => {
+        parsed.forEach((p) => {
+          d.testes.push({
+            id: uid("t"), data: new Date().toISOString().slice(0, 10), tipoConta: "",
+            tipoTeste: p.tipoTeste, ambiente: "Homologação", dono: "", descricao: p.descricao, nota: 0,
+            ...pastaStamp(pastaH!, ""),
+          });
+        });
+      });
+      setImportMsg(`${parsed.length} teste(s) importado(s) como pendente (nota 0).`);
+    } catch (e: any) {
+      setImportMsg("Não consegui importar: " + (e?.message || "arquivo inválido"));
+    }
+  };
+
   return (
     <div>
       <div className="page-head"><div className="h1">Testes</div><p>Registro dos testes de regras e features do produto. A nota (0–10) indica o quanto foi aprovado — 10 = 100% validado.</p></div>
+      <PastaBar items={db.testes} hospital={pastaH} onChange={(h) => setPastaH(h)} />
+      {pastaH !== null && (<>
       <div className="filters">
         <select className="select-sm" value={f.tipoTeste} onChange={(e) => setF({ ...f, tipoTeste: e.target.value })}><option value="">Tipo de teste</option><option>Regra</option><option>Feature Produto</option></select>
         <select className="select-sm" value={f.ambiente} onChange={(e) => setF({ ...f, ambiente: e.target.value })}><option value="">Ambiente</option><option>Homologação</option><option>Produção</option></select>
         <span className="chip">Nota média: {media}</span>
-        <button className="btn primary sm" style={{ marginLeft: "auto" }} onClick={() => setEdit({})}><Ic d={icons.plus} size={13} />Registrar teste</button>
+        <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={(e) => { const file = e.target.files?.[0]; if (file) onImportFile(file); e.target.value = ""; }} />
+        <button className="btn ghost sm" style={{ marginLeft: "auto" }} onClick={() => fileRef.current?.click()}><Ic d={icons.plus} size={13} />Importar plano de testes</button>
+        <button className="btn primary sm" onClick={() => setEdit({})}><Ic d={icons.plus} size={13} />Registrar teste</button>
       </div>
+      {importMsg && <div className="dim" style={{ fontSize: 12, marginBottom: 10 }}>{importMsg}</div>}
       <div className="tbl-wrap"><div className="tbl-scroll"><table><thead><tr><th>Data</th><th>Tipo de conta</th><th>Tipo de teste</th><th>Ambiente</th><th>Dono</th><th>Descrição</th><th>Nota</th><th /></tr></thead>
         <tbody>{items.map((t) => (<tr key={t.id}>
           <td className="muted">{t.data}</td>
@@ -28,11 +76,12 @@ export function Testes() {
           <td className="muted">{t.dono}</td>
           <td className="muted" style={{ maxWidth: 260, fontSize: 12.5 }}>{t.descricao}</td>
           <td><Badge cls={t.nota >= 8 ? "b-green" : t.nota >= 5 ? "b-amber" : "b-red"}>{t.nota}/10</Badge></td>
-          <td><div className="row" style={{ gap: 4 }}><button className="btn ghost sm" onClick={() => setEdit(t)}>Editar</button><button className="btn ghost sm danger" onClick={() => upd((d: DB) => { d.testes = d.testes.filter((x) => x.id !== t.id); })}>×</button></div></td>
+          <td><div className="row" style={{ gap: 4 }}><button className="btn ghost sm" onClick={() => setEdit(t)}>Editar</button><button className="btn ghost sm danger" onClick={() => { if (confirm("Excluir este registro de teste?")) upd((d: DB) => { d.testes = d.testes.filter((x) => x.id !== t.id); }); }}>×</button></div></td>
         </tr>))}
         {!items.length && <tr><td colSpan={8}><div className="empty">Nenhum teste registrado.</div></td></tr>}</tbody>
       </table></div></div>
-      {edit && <TesteEditor t={edit} onClose={() => setEdit(null)} onSave={(data: any) => { upd((d: DB) => { if (edit.id) Object.assign(d.testes.find((x) => x.id === edit.id)!, data); else d.testes.push({ id: uid("t"), ...data }); }); setEdit(null); }} />}
+      </>)}
+      {edit && <TesteEditor t={edit} onClose={() => setEdit(null)} onSave={(data: any) => { upd((d: DB) => { if (edit.id) Object.assign(d.testes.find((x) => x.id === edit.id)!, data); else d.testes.push({ id: uid("t"), ...pastaStamp(pastaH!, ""), ...data }); }); setEdit(null); }} />}
     </div>
   );
 }

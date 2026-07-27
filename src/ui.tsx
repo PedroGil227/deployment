@@ -85,34 +85,33 @@ export function CrudTable({ title, items, columns, onAdd, onEdit, onDelete }: an
   );
 }
 
-// Navegador de pastas Hospital > Operadora, reutilizado em AS IS, To Be, Change Management,
-// Regras e Testes. Pastas são livres (criadas na hora, não precisam de cadastro prévio).
-// SEM_HOSPITAL agrupa registros criados ANTES de existir esse conceito de pasta — eles nunca
-// ficam escondidos, sempre aparecem aqui como "Dados antigos (sem pasta)". GERAL_OPERADORA
-// representa "sem operadora específica" dentro de um hospital.
+// Navegador de pastas — agora só por Hospital (pasta geral). A "operadora" deixou de ser uma
+// sub-pasta: cada implantação nova de operadora é indicada como um LABEL/tag no próprio item
+// (o multi-select "Operadora" que já existe no editor de cada processo/ação/regra), não mais
+// como um nível de navegação separado. SEM_HOSPITAL agrupa registros criados antes de existir
+// esse conceito de pasta — eles nunca ficam escondidos, sempre aparecem como "Dados antigos".
+// pastaOperadora continua existindo no tipo de dado só por compatibilidade com registros antigos
+// (nada é apagado), mas não é mais considerado na navegação/filtro.
 export const SEM_HOSPITAL = "__sem_pasta__";
-export const GERAL_OPERADORA = "__geral__";
-export const pastaMatch = (hospital: string, operadora: string, itemH?: string, itemO?: string) =>
-  (hospital === SEM_HOSPITAL ? !itemH : itemH === hospital) && (operadora === GERAL_OPERADORA ? !itemO : itemO === operadora);
-export const pastaStamp = (hospital: string, operadora: string) => ({
+export const GERAL_OPERADORA = "__geral__"; // mantido só por compatibilidade com dados já gravados
+export const pastaMatch = (hospital: string, _operadora: string, itemH?: string, _itemO?: string) =>
+  hospital === SEM_HOSPITAL ? !itemH : itemH === hospital;
+export const pastaStamp = (hospital: string, _operadora: string) => ({
   pastaHospital: hospital === SEM_HOSPITAL ? "" : hospital,
-  pastaOperadora: operadora === GERAL_OPERADORA ? "" : operadora,
 });
 
-export function PastaBar({ items, hospital, operadora, onChange, operadoraLabel = "Operadora" }: {
-  items: { pastaHospital?: string; pastaOperadora?: string }[];
-  hospital: string | null; operadora: string | null;
-  onChange: (hospital: string | null, operadora: string | null) => void;
-  operadoraLabel?: string;
+export function PastaBar({ items, hospital, onChange }: {
+  items: { pastaHospital?: string }[];
+  hospital: string | null;
+  onChange: (hospital: string | null) => void;
 }) {
   const [novo, setNovo] = useState("");
   const hospitais = Array.from(new Set(items.map((i) => i.pastaHospital).filter(Boolean))) as string[];
   const temSemPasta = items.some((i) => !i.pastaHospital);
-  const operadoras = Array.from(new Set(items.filter((i) => (i.pastaHospital || "") === (hospital === SEM_HOSPITAL ? "" : hospital)).map((i) => i.pastaOperadora).filter(Boolean))) as string[];
 
   const addNovo = () => {
     const v = novo.trim(); if (!v) return;
-    if (hospital === null) onChange(v, null); else onChange(hospital, v);
+    onChange(v);
     setNovo("");
   };
 
@@ -121,8 +120,8 @@ export function PastaBar({ items, hospital, operadora, onChange, operadoraLabel 
       <div className="card card-pad" style={{ marginBottom: 14 }}>
         <div className="h2" style={{ marginBottom: 10 }}>Escolha o hospital</div>
         <div className="chips" style={{ marginBottom: 10 }}>
-          {hospitais.map((h) => <button key={h} className="ce-pill" onClick={() => onChange(h, null)}>{h}</button>)}
-          {temSemPasta && <button className="ce-pill" onClick={() => onChange(SEM_HOSPITAL, null)}>📦 Dados antigos (sem pasta)</button>}
+          {hospitais.map((h) => <button key={h} className="ce-pill" onClick={() => onChange(h)}>{h}</button>)}
+          {temSemPasta && <button className="ce-pill" onClick={() => onChange(SEM_HOSPITAL)}>📦 Dados antigos (sem pasta)</button>}
           {!hospitais.length && !temSemPasta && <span className="dim" style={{ fontSize: 12 }}>Nenhum hospital ainda — crie o primeiro abaixo.</span>}
         </div>
         <div className="row" style={{ gap: 6 }}>
@@ -132,30 +131,10 @@ export function PastaBar({ items, hospital, operadora, onChange, operadoraLabel 
       </div>
     );
   }
-  if (operadora === null) {
-    return (
-      <div className="card card-pad" style={{ marginBottom: 14 }}>
-        <div className="between" style={{ marginBottom: 10 }}>
-          <div className="h2">{hospital === SEM_HOSPITAL ? "📦 Dados antigos (sem pasta)" : hospital} <span className="dim" style={{ fontWeight: 400, fontSize: 13 }}>· escolha a {operadoraLabel.toLowerCase()}</span></div>
-          <button className="btn ghost sm" onClick={() => onChange(null, null)}>← Trocar hospital</button>
-        </div>
-        <div className="chips" style={{ marginBottom: 10 }}>
-          {operadoras.map((o) => <button key={o} className="ce-pill" onClick={() => onChange(hospital, o)}>{o}</button>)}
-          <button className="ce-pill" onClick={() => onChange(hospital, GERAL_OPERADORA)}>Geral (sem {operadoraLabel.toLowerCase()})</button>
-        </div>
-        {hospital !== SEM_HOSPITAL && <div className="row" style={{ gap: 6 }}>
-          <input type="text" placeholder={"Nova " + operadoraLabel.toLowerCase() + "…"} value={novo} onChange={(e) => setNovo(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addNovo()} style={{ width: 220 }} />
-          <button className="btn sm" onClick={addNovo}>+ Criar</button>
-        </div>}
-      </div>
-    );
-  }
   return (
     <div className="row" style={{ marginBottom: 14, gap: 8, alignItems: "center" }}>
       <Badge cls="b-blue">{hospital === SEM_HOSPITAL ? "📦 Dados antigos" : hospital}</Badge>
-      {operadora !== GERAL_OPERADORA && <Badge cls="b-purple">{operadora}</Badge>}
-      <button className="btn ghost sm" onClick={() => onChange(hospital, null)}>Trocar {operadoraLabel.toLowerCase()}</button>
-      <button className="btn ghost sm" onClick={() => onChange(null, null)}>Trocar hospital</button>
+      <button className="btn ghost sm" onClick={() => onChange(null)}>Trocar hospital</button>
     </div>
   );
 }

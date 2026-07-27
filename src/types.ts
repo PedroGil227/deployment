@@ -13,12 +13,14 @@ export interface Processo {
   x: number; y: number; tiposAtendimento: string[]; operadoras: string[];
   sistema: string; setor: string; responsavel: string;
   pastaHospital?: string; pastaOperadora?: string;
+  ordem?: string;
 }
 export interface Conexao { id: string; from: string; to: string; label: string; }
 export interface Acao {
   id: string; processo: string; nome: string; descricao: string;
   sistema: string; responsavel: string; tiposAtendimento: string[];
   operadoras: string[]; itemConta: string; tipoConta: string;
+  ordem?: string;
 }
 export interface TobeEntry { statusFuturo: string; owner: string; uows: string[]; obs: string; }
 export interface Problema {

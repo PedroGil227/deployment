@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { useStore } from "../store";
-import { uid, nameById } from "../lib/derive";
-import { Badge, Ic, icons } from "../ui";
+import { uid } from "../lib/derive";
+import { Badge, Ic, icons, PastaBar, pastaStamp } from "../ui";
 import type { DB, Processo, Acao, Conexao, GapManual } from "../types";
 
 // Aceita os mesmos rótulos de coluna usados no questionarios-as-is.xlsx, tolerando
@@ -25,43 +25,78 @@ const HEADER_ALIASES: Record<string, string> = {
 };
 
 const TIPOS_GERADORES = ["Criar processo", "Criar decisão", "Adicionar ação", "Marcar candidato TO BE"];
+const STATUS_RESPONDIDO = ["Respondido", "Respondido (parcial)"];
+const isPlaceholder = (s: string) => /^\[a preencher/i.test((s || "").trim()) || !s.trim();
 
 interface ParsedRow {
   operadora: string; perguntaId: string; setor: string; questionamento: string;
   criticidade: string; resposta: string; evidencia: string; tipoAcao: string;
   acao: string; fonte: string; noVinculado: string; status: string; obs: string;
-  _accept: boolean;
+  _accept: boolean; _inferido: boolean;
 }
+
+interface Draft { processos: Processo[]; acoes: Acao[]; conexoes: Conexao[]; gaps: GapManual[]; tobe: Record<string, DB["tobe"][string]> }
 
 function parseWorkbook(buf: ArrayBuffer): ParsedRow[] {
   const wb = XLSX.read(buf, { type: "array" });
+
+  // Cruza com o Banco de Perguntas (por PerguntaID) para recuperar Setor/Questionamento/Criticidade
+  // quando a aba de Respostas deixa essas colunas em branco (comum quando ela só referencia o ID).
+  const bancoSheet = wb.SheetNames.find((n) => /banco/i.test(n));
+  const bancoMap: Record<string, { setor: string; questionamento: string; criticidade: string }> = {};
+  if (bancoSheet) {
+    const bJson: any[] = XLSX.utils.sheet_to_json(wb.Sheets[bancoSheet], { defval: "" });
+    bJson.forEach((raw) => {
+      const id = String(raw["ID"] ?? raw["Id"] ?? raw["id"] ?? "").trim();
+      if (!id) return;
+      bancoMap[id] = {
+        setor: String(raw["Setor"] ?? "").trim(),
+        questionamento: String(raw["Questionamento"] ?? "").trim(),
+        criticidade: String(raw["Criticidade (sugestão)"] ?? raw["Criticidade"] ?? "").trim(),
+      };
+    });
+  }
+
   const sheetName = wb.SheetNames.find((n) => /resposta/i.test(n)) || wb.SheetNames[0];
   const ws = wb.Sheets[sheetName];
   const json: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
   return json.map((raw) => {
     const row: any = {};
     Object.keys(raw).forEach((k) => { const canon = HEADER_ALIASES[norm(k)]; if (canon) row[canon] = String(raw[k] ?? "").trim(); });
-    const hasContent = !!(row.resposta || row.acao);
+    const fromBanco = bancoMap[row.perguntaId || ""];
+    const setor = row.setor || fromBanco?.setor || "Sem setor";
+    const questionamento = row.questionamento || fromBanco?.questionamento || "";
+    const criticidade = row.criticidade || fromBanco?.criticidade || "";
+    const resposta = row.resposta || "";
+    const respondida = STATUS_RESPONDIDO.includes(row.status) && !isPlaceholder(resposta);
+
+    let tipoAcao = row.tipoAcao || "";
+    let inferido = false;
+    // Sem tag manual, mas com resposta real e status respondido: assume "Adicionar ação"
+    // por padrão, em vez de descartar silenciosamente o conteúdo já levantado.
+    if (!TIPOS_GERADORES.includes(tipoAcao) && respondida) { tipoAcao = "Adicionar ação"; inferido = true; }
+
     return {
-      operadora: row.operadora || "", perguntaId: row.perguntaId || "", setor: row.setor || "Sem setor",
-      questionamento: row.questionamento || "", criticidade: row.criticidade || "", resposta: row.resposta || "",
-      evidencia: row.evidencia || "", tipoAcao: row.tipoAcao || "", acao: row.acao || "",
+      operadora: row.operadora || "", perguntaId: row.perguntaId || "", setor, questionamento,
+      criticidade, resposta, evidencia: row.evidencia || "", tipoAcao, acao: row.acao || "",
       fonte: row.fonte || "", noVinculado: row.noVinculado || "", status: row.status || "", obs: row.obs || "",
-      _accept: TIPOS_GERADORES.includes(row.tipoAcao) && hasContent,
+      _accept: TIPOS_GERADORES.includes(tipoAcao), _inferido: inferido,
     };
   });
 }
 
 export function MapeamentoAI({ go }: { go?: (v: string) => void }) {
   const { db, upd } = useStore();
+  const [pastaH, setPastaH] = useState<string | null>(null);
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
-  const [result, setResult] = useState<{ processos: number; acoes: number; conexoes: number; candidatos: number } | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [movido, setMovido] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const onFile = async (file: File) => {
-    setError(""); setResult(null);
+    setError(""); setDraft(null); setMovido(false);
     try {
       const buf = await file.arrayBuffer();
       const parsed = parseWorkbook(buf);
@@ -78,72 +113,88 @@ export function MapeamentoAI({ go }: { go?: (v: string) => void }) {
   const bySetor = rows.reduce((acc: Record<string, ParsedRow[]>, r) => { (acc[r.setor] = acc[r.setor] || []).push(r); return acc; }, {});
   const accepted = rows.filter((r) => r._accept);
 
+  // Gera um RASCUNHO local (nada é salvo ainda). Só ao clicar "Mover para AS IS" é que
+  // os processos/ações passam a existir de verdade na pasta Hospital/Operadora escolhida.
   const gerar = () => {
-    const counts = { processos: 0, acoes: 0, conexoes: 0, candidatos: 0 };
-    upd((d: DB) => {
-      const laneLast: Record<string, string> = {};
-      const laneCount: Record<string, number> = {};
-      const setores = Object.keys(bySetor);
-      const setorIndex: Record<string, number> = {}; setores.forEach((s, i) => (setorIndex[s] = i));
+    const d: Draft = { processos: [], acoes: [], conexoes: [], gaps: [], tobe: {} };
+    const laneLast: Record<string, string> = {};
+    const laneCount: Record<string, number> = {};
+    const setores = Object.keys(bySetor);
+    const setorIndex: Record<string, number> = {}; setores.forEach((s, i) => (setorIndex[s] = i));
 
-      const ensureLane = (setor: string): string => {
-        if (laneLast[setor]) return laneLast[setor];
-        const n: Processo = {
-          id: uid("p"), nome: setor, descricao: "Gerado automaticamente pelo Mapeamento AI a partir do questionário AS IS.",
-          tipo: "processo", x: 120 + (setorIndex[setor] || 0) * 40, y: 120 + (setorIndex[setor] || 0) * 160,
-          tiposAtendimento: [], operadoras: [], sistema: "", setor: "", responsavel: "",
-        };
-        d.processos.push(n); counts.processos++;
-        laneLast[setor] = n.id; laneCount[setor] = 1;
-        return n.id;
+    const ensureLane = (setor: string): string => {
+      if (laneLast[setor]) return laneLast[setor];
+      const n: Processo = {
+        id: uid("p"), nome: setor, descricao: "Gerado automaticamente pelo Mapeamento AI a partir do questionário AS IS.",
+        tipo: "processo", x: 120 + (setorIndex[setor] || 0) * 40, y: 120 + (setorIndex[setor] || 0) * 160,
+        tiposAtendimento: [], operadoras: [], sistema: "", setor: "", responsavel: "", ...pastaStamp(pastaH!, ""),
       };
+      d.processos.push(n); laneLast[setor] = n.id; laneCount[setor] = 1;
+      return n.id;
+    };
 
-      accepted.forEach((r) => {
-        if (r.tipoAcao === "Criar processo" || r.tipoAcao === "Criar decisão") {
-          const prevId = laneLast[r.setor];
-          const idx = (laneCount[r.setor] = (laneCount[r.setor] || 0) + 1);
-          const n: Processo = {
-            id: uid("p"), nome: r.acao || r.questionamento.slice(0, 60), descricao: r.resposta,
-            tipo: r.tipoAcao === "Criar decisão" ? "decisao" : "processo",
-            x: 120 + idx * 250, y: 120 + (setorIndex[r.setor] || 0) * 160,
-            tiposAtendimento: [], operadoras: r.operadora ? [r.operadora] : [], sistema: "", setor: "", responsavel: "",
-          };
-          d.processos.push(n); counts.processos++;
-          if (prevId) { const c: Conexao = { id: uid("e"), from: prevId, to: n.id, label: "" }; d.conexoes.push(c); counts.conexoes++; }
-          laneLast[r.setor] = n.id;
-        } else if (r.tipoAcao === "Adicionar ação") {
-          const targetId = ensureLane(r.setor);
-          const a: Acao = {
-            id: uid("a"), processo: targetId, nome: r.questionamento.slice(0, 80) || r.acao.slice(0, 80),
-            descricao: r.acao || r.resposta, sistema: "", responsavel: "",
-            tiposAtendimento: [], operadoras: r.operadora ? [r.operadora] : [], itemConta: "", tipoConta: "",
-          };
-          d.acoes.push(a); counts.acoes++;
-          d.tobe[a.id] = { statusFuturo: "Executada por ação humana", owner: "Hospital", uows: [], obs: r.obs || "" };
-        } else if (r.tipoAcao === "Marcar candidato TO BE") {
-          const g: GapManual = {
-            id: uid("gap"), tipo: "Candidato TO BE", origem: "Questionário AS IS · " + (r.operadora || "—"),
-            processo: "", acao: "", operadora: "", prioridade: r.criticidade === "Fundamental" ? "Alta" : r.criticidade === "Importante" ? "Média" : "Baixa",
-            responsavel: "", status: "Aberto", obs: (r.acao || r.resposta) + (r.fonte ? " · Fonte: " + r.fonte : ""),
-          };
-          d.gapsManuais.push(g); counts.candidatos++;
-        }
-      });
+    accepted.forEach((r) => {
+      if (r.tipoAcao === "Criar processo" || r.tipoAcao === "Criar decisão") {
+        const prevId = laneLast[r.setor];
+        const idx = (laneCount[r.setor] = (laneCount[r.setor] || 0) + 1);
+        const n: Processo = {
+          id: uid("p"), nome: r.acao || r.questionamento.slice(0, 60), descricao: r.resposta,
+          tipo: r.tipoAcao === "Criar decisão" ? "decisao" : "processo",
+          x: 120 + idx * 250, y: 120 + (setorIndex[r.setor] || 0) * 160,
+          tiposAtendimento: [], operadoras: [], sistema: "", setor: "", responsavel: "", ...pastaStamp(pastaH!, ""),
+        };
+        d.processos.push(n);
+        if (prevId) d.conexoes.push({ id: uid("e"), from: prevId, to: n.id, label: "" });
+        laneLast[r.setor] = n.id;
+      } else if (r.tipoAcao === "Adicionar ação") {
+        const targetId = ensureLane(r.setor);
+        const a: Acao = {
+          id: uid("a"), processo: targetId, nome: r.questionamento.slice(0, 80) || r.acao.slice(0, 80),
+          descricao: r.acao || r.resposta, sistema: "", responsavel: "",
+          tiposAtendimento: [], operadoras: [], itemConta: "", tipoConta: "",
+        };
+        d.acoes.push(a);
+        d.tobe[a.id] = { statusFuturo: "Executada por ação humana", owner: "Hospital", uows: [], obs: r.obs || "" };
+      } else if (r.tipoAcao === "Marcar candidato TO BE") {
+        d.gaps.push({
+          id: uid("gap"), tipo: "Candidato TO BE", origem: "Questionário AS IS · " + (r.operadora || "—"),
+          processo: "", acao: "", operadora: "", prioridade: r.criticidade === "Fundamental" ? "Alta" : r.criticidade === "Importante" ? "Média" : "Baixa",
+          responsavel: "", status: "Aberto", obs: (r.acao || r.resposta) + (r.fonte ? " · Fonte: " + r.fonte : ""),
+        });
+      }
     });
-    setResult(counts);
+    setDraft(d); setMovido(false);
   };
+
+  const mover = () => {
+    if (!draft) return;
+    upd((d: DB) => {
+      d.processos.push(...draft.processos);
+      d.acoes.push(...draft.acoes);
+      d.conexoes.push(...draft.conexoes);
+      d.gapsManuais.push(...draft.gaps);
+      Object.assign(d.tobe, draft.tobe);
+    });
+    setMovido(true);
+  };
+
+  const podeGerar = pastaH !== null && accepted.length > 0;
 
   return (
     <div>
       <div className="page-head">
         <div className="h1">Mapeamento AS IS · AI RIVIO</div>
-        <p>Importe a planilha de respostas do Questionário AS IS (mesmo formato do questionarios-as-is.xlsx). Cada linha é traduzida automaticamente em processo, decisão, ação ou candidato TO BE no fluxo AS IS, de acordo com o "Tipo de ação aplicada".</p>
+        <p>Importe a planilha de respostas do Questionário AS IS (mesmo formato do questionarios-as-is.xlsx). Cada linha é traduzida automaticamente em processo, decisão, ação ou candidato TO BE, de acordo com o "Tipo de ação aplicada" — e quando essa coluna não foi marcada mas a pergunta já tem uma resposta real (status Respondido/Respondido parcial), ela vira "Adicionar ação" automaticamente (marcado como "auto" na revisão). O mapeamento fica como rascunho aqui — só entra de vez no AS IS · Fluxo quando você clicar em "Mover para AS IS".</p>
       </div>
 
+      <div className="h2" style={{ marginBottom: 8, fontSize: 13 }}>1. Escolha a pasta de destino</div>
+      <PastaBar items={db.processos} hospital={pastaH} onChange={(h) => { setPastaH(h); setDraft(null); setMovido(false); }} />
+
+      {pastaH !== null && (<>
       <div className="card card-pad" style={{ marginBottom: 16 }}>
         <div className="between" style={{ marginBottom: rows.length ? 10 : 0 }}>
           <div>
-            <div className="h2">1. Importar planilha</div>
+            <div className="h2">2. Importar planilha</div>
             <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>{fileName ? <>Arquivo: <b>{fileName}</b> · {rows.length} linhas lidas</> : "Aceita .xlsx, .xls ou .csv"}</div>
           </div>
           <div className="row">
@@ -157,7 +208,7 @@ export function MapeamentoAI({ go }: { go?: (v: string) => void }) {
       {rows.length > 0 && (
         <>
           <div className="between" style={{ marginBottom: 10 }}>
-            <div className="h2">2. Revisar o que será gerado <span className="chip">{accepted.length}/{rows.length} selecionadas</span></div>
+            <div className="h2">3. Revisar o que será gerado <span className="chip">{accepted.length}/{rows.length} selecionadas</span></div>
             <div className="row" style={{ gap: 6 }}>
               <button className="btn ghost sm" onClick={() => toggleAll(true)}>Marcar geradoras</button>
               <button className="btn ghost sm" onClick={() => toggleAll(false)}>Desmarcar tudo</button>
@@ -175,7 +226,7 @@ export function MapeamentoAI({ go }: { go?: (v: string) => void }) {
                   return (<tr key={i} style={{ opacity: geraNode ? 1 : 0.5 }}>
                     <td><input type="checkbox" checked={r._accept} disabled={!geraNode} onChange={() => toggle(i)} /></td>
                     <td style={{ fontWeight: 600, minWidth: 200 }}>{r.questionamento || <span className="dim">—</span>}</td>
-                    <td>{r.tipoAcao ? <Badge cls={geraNode ? "b-purple" : "b-gray"}>{r.tipoAcao}</Badge> : <span className="dim">—</span>}</td>
+                    <td>{r.tipoAcao ? <Badge cls={geraNode ? "b-purple" : "b-gray"}>{r.tipoAcao}{r._inferido ? " (auto)" : ""}</Badge> : <span className="dim">—</span>}</td>
                     <td className="muted" style={{ fontSize: 11.5 }}>
                       {r.tipoAcao === "Criar processo" && "Nova caixa de processo"}
                       {r.tipoAcao === "Criar decisão" && "Nova caixa de decisão"}
@@ -191,28 +242,44 @@ export function MapeamentoAI({ go }: { go?: (v: string) => void }) {
           ))}
 
           <div className="row" style={{ marginTop: 6 }}>
-            <button className="btn primary" disabled={!accepted.length} onClick={gerar}><Ic d={icons.plus} size={14} />Gerar mapeamento ({accepted.length})</button>
+            <button className="btn primary" disabled={!podeGerar} onClick={gerar}><Ic d={icons.plus} size={14} />Gerar rascunho ({accepted.length})</button>
           </div>
 
-          {result && (
+          {draft && !movido && (
             <div className="card card-pad" style={{ marginTop: 14 }}>
-              <div className="h2" style={{ marginBottom: 8 }}>Mapeamento gerado</div>
-              <div className="chips">
-                <Badge cls="b-blue">{result.processos} processos/decisões</Badge>
-                <Badge cls="b-green">{result.acoes} ações</Badge>
-                <Badge cls="b-gray">{result.conexoes} conexões</Badge>
-                <Badge cls="b-red">{result.candidatos} candidatos TO BE (em Gaps)</Badge>
+              <div className="between" style={{ marginBottom: 8 }}>
+                <div className="h2">Rascunho gerado <span className="dim" style={{ fontWeight: 400, fontSize: 12 }}>· ainda não está no AS IS · Fluxo</span></div>
+                <Badge cls="b-amber">Pendente</Badge>
               </div>
-              <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>
-                As caixas foram criadas por setor, uma ao lado da outra. Vá em <b>AS IS · Fluxo</b> para arrastar, ligar e ajustar o layout.
-              </p>
+              <div className="chips" style={{ marginBottom: 10 }}>
+                <Badge cls="b-blue">{draft.processos.length} processos/decisões</Badge>
+                <Badge cls="b-green">{draft.acoes.length} ações</Badge>
+                <Badge cls="b-gray">{draft.conexoes.length} conexões</Badge>
+                <Badge cls="b-red">{draft.gaps.length} candidatos TO BE</Badge>
+              </div>
+              <div style={{ maxHeight: 220, overflow: "auto", marginBottom: 12 }}>
+                {draft.processos.map((p) => (<div key={p.id} className="rel-item"><span>{p.tipo === "decisao" ? "◆" : "▭"} {p.nome}</span><span className="dim" style={{ fontSize: 11 }}>{p.descricao?.slice(0, 60)}</span></div>))}
+              </div>
+              <div className="row" style={{ gap: 8 }}>
+                <button className="btn primary" onClick={mover}>Mover para AS IS · Fluxo</button>
+                <button className="btn ghost" onClick={() => setDraft(null)}>Descartar rascunho</button>
+              </div>
+            </div>
+          )}
+
+          {movido && (
+            <div className="card card-pad" style={{ marginTop: 14 }}>
+              <div className="h2" style={{ marginBottom: 8 }}>Movido para {pastaH === "__sem_pasta__" ? "Dados antigos" : pastaH}</div>
+              <p className="muted" style={{ fontSize: 12.5 }}>As caixas já existem de verdade no AS IS · Fluxo, dentro dessa pasta. Vá lá para arrastar, ligar e ajustar o layout.</p>
               {go && <button className="btn sm" style={{ marginTop: 8 }} onClick={() => go("flow")}>Abrir AS IS · Fluxo</button>}
             </div>
           )}
         </>
       )}
+      </>)}
 
-      {!rows.length && !error && (
+      {!(pastaH !== null) && <div className="empty">Escolha o hospital acima para começar.</div>}
+      {pastaH !== null && !rows.length && !error && (
         <div className="empty">Nenhuma planilha importada ainda. Escolha o arquivo acima para começar.</div>
       )}
     </div>

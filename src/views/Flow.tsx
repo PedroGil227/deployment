@@ -7,7 +7,6 @@ import type { DB, Processo } from "../types";
 export function FlowBuilder() {
   const { db, upd } = useStore();
   const [pastaH, setPastaH] = useState<string | null>(null);
-  const [pastaO, setPastaO] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const [filters, setFilters] = useState({ operadora: "", tipoAtendimento: "", tipoConta: "", itemConta: "" });
@@ -18,7 +17,13 @@ export function FlowBuilder() {
   const canvasRef = useRef<HTMLDivElement>(null);
   const saveEdge = () => { if (!edgeEdit) return; upd((d: DB) => { const e = d.conexoes.find((x) => x.id === edgeEdit.id); if (e) e.label = (edgeEdit.value || "").trim(); }); setEdgeEdit(null); };
 
-  const actionsByProc = (pid: string) => db.acoes.filter((a) => a.processo === pid);
+  const actionsByProc = (pid: string) => db.acoes.filter((a) => a.processo === pid).slice().sort((a, b) => {
+    const na = parseFloat(a.ordem || ""), nb = parseFloat(b.ordem || "");
+    if (isNaN(na) && isNaN(nb)) return 0;
+    if (isNaN(na)) return 1;
+    if (isNaN(nb)) return -1;
+    return na - nb;
+  });
   const f = filters;
   const activeFilter = Object.values(f).some(Boolean);
   const nodeMatches = (p: Processo) => {
@@ -107,19 +112,19 @@ export function FlowBuilder() {
     return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
   }, [linkFrom]);
   const drawerNode = db.processos.find((p) => p.id === drawerId);
-  const procs = pastaH === null || pastaO === null ? [] : db.processos.filter((p) => pastaMatch(pastaH, pastaO, p.pastaHospital, p.pastaOperadora));
+  const procs = pastaH === null ? [] : db.processos.filter((p) => pastaMatch(pastaH, "", p.pastaHospital, p.pastaOperadora));
   const procIds = new Set(procs.map((p) => p.id));
   const conexoesInPasta = db.conexoes.filter((c) => procIds.has(c.from) && procIds.has(c.to));
 
   const addNode = (tipo: "processo" | "decisao") => {
     const sl = canvasRef.current ? canvasRef.current.scrollLeft : 0, st = canvasRef.current ? canvasRef.current.scrollTop : 0;
-    const n: Processo = { id: uid("p"), nome: tipo === "decisao" ? "Nova decisão" : "Novo processo", descricao: "", tipo, x: 120 + sl, y: 120 + st, tiposAtendimento: [], operadoras: [], sistema: "", setor: "", responsavel: "", ...pastaStamp(pastaH!, pastaO!) };
+    const n: Processo = { id: uid("p"), nome: tipo === "decisao" ? "Nova decisão" : "Novo processo", descricao: "", tipo, x: 120 + sl, y: 120 + st, tiposAtendimento: [], operadoras: [], sistema: "", setor: "", responsavel: "", ...pastaStamp(pastaH!, "") };
     upd((d: DB) => { d.processos.push(n); }); setSelected(n.id); setEditNode(n);
   };
   const addChild = (parent: Processo) => {
     const childCount = db.conexoes.filter((c) => c.from === parent.id).length;
     const isDec = parent.tipo === "decisao";
-    const n: Processo = { id: uid("p"), nome: isDec ? "Novo caminho" : "Novo processo", descricao: "", tipo: "processo", x: parent.x + 250, y: parent.y + childCount * 140, tiposAtendimento: [...parent.tiposAtendimento], operadoras: [...parent.operadoras], sistema: "", setor: "", responsavel: "", ...pastaStamp(pastaH!, pastaO!) };
+    const n: Processo = { id: uid("p"), nome: isDec ? "Novo caminho" : "Novo processo", descricao: "", tipo: "processo", x: parent.x + 250, y: parent.y + childCount * 140, tiposAtendimento: [...parent.tiposAtendimento], operadoras: [...parent.operadoras], sistema: "", setor: "", responsavel: "", ...pastaStamp(pastaH!, "") };
     const edgeId = uid("e");
     upd((d: DB) => { d.processos.push(n); d.conexoes.push({ id: edgeId, from: parent.id, to: n.id, label: "" }); });
     setSelected(n.id);
@@ -130,10 +135,10 @@ export function FlowBuilder() {
 
   return (
     <>
-      <div style={{ padding: pastaH !== null && pastaO !== null ? "14px 16px 0" : "14px 16px" }}>
-        <PastaBar items={db.processos} hospital={pastaH} operadora={pastaO} onChange={(h, o) => { setPastaH(h); setPastaO(o); }} />
+      <div style={{ padding: pastaH !== null ? "14px 16px 0" : "14px 16px" }}>
+        <PastaBar items={db.processos} hospital={pastaH} onChange={(h) => setPastaH(h)} />
       </div>
-      {pastaH === null || pastaO === null ? null : (<>
+      {pastaH === null ? null : (<>
       <div className="flow-toolbar">
         <button className="btn primary sm" onClick={() => addNode("processo")}><Ic d={icons.plus} size={13} />Processo</button>
         <button className="btn sm" onClick={() => addNode("decisao")}><Ic d={icons.plus} size={13} />Decisão</button>
@@ -171,6 +176,7 @@ export function FlowBuilder() {
             const isLinkTarget = !!(linkFrom && linkFrom !== p.id && linkPos && withinNodeBox(p, linkPos));
             return (<div key={p.id} className={"node " + (p.tipo === "decisao" ? "decision " : "") + (selected === p.id ? "selected " : "") + (isLinkTarget ? "link-target" : "")} style={{ left: pos.x, top: pos.y, opacity: dim ? 0.28 : 1 }} onMouseDown={(e) => e.stopPropagation()}>
               <span className="node-badge">{acts.length}</span>
+              {p.ordem && <span className="node-order-badge" title="Sequência do processo">{p.ordem}</span>}
               <button className="node-plus" title="Adicionar caixa conectada" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); addChild(p); }}>+</button>
               <div className="node-link-handle" title="Arraste até outra caixa para conectar" onMouseDown={(e) => { e.stopPropagation(); startLink(e, p); }} />
               <div className="node-head" onMouseDown={(e) => onMouseDown(e, p)} onDoubleClick={() => setDrawerId(p.id)}>
@@ -188,7 +194,7 @@ export function FlowBuilder() {
         <div className="drawer" onClick={(e) => e.stopPropagation()}>
           <div className="drawer-head">
             <div className="between"><Badge cls={drawerNode.tipo === "decisao" ? "b-amber" : "b-blue"}>{drawerNode.tipo === "decisao" ? "Decisão" : "Processo"}</Badge><button className="close-x" onClick={() => setDrawerId(null)}>×</button></div>
-            <div className="h2" style={{ marginTop: 8 }}>{drawerNode.nome}</div>
+            <div className="h2" style={{ marginTop: 8 }}>{drawerNode.ordem && <span className="chip" style={{ marginRight: 6 }} title="Sequência">{drawerNode.ordem}</span>}{drawerNode.nome}</div>
             <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>{drawerNode.descricao || "Sem descrição."}</div>
             <div className="chips" style={{ marginTop: 10 }}>
               <span className="chip">Setor: {nameById(db.setores, drawerNode.setor)}</span>
@@ -203,7 +209,7 @@ export function FlowBuilder() {
             <div className="between" style={{ marginBottom: 10 }}><div className="h2">Ações <span className="chip">{actionsByProc(drawerNode.id).length}</span></div>
               <button className="btn primary sm" onClick={() => setEditAction({ processo: drawerNode.id })}><Ic d={icons.plus} size={13} />Ação</button></div>
             {actionsByProc(drawerNode.id).map((a) => (<div className="act-item" key={a.id}>
-              <div className="between"><div style={{ fontWeight: 650 }}>{a.nome}</div>
+              <div className="between"><div style={{ fontWeight: 650 }}>{a.ordem && <span className="chip" style={{ marginRight: 6 }} title="Sequência">{a.ordem}</span>}{a.nome}</div>
                 <div className="row" style={{ gap: 4 }}><button className="btn ghost sm" onClick={() => setEditAction(a)}>Editar</button><button className="btn ghost sm danger" onClick={() => { if (confirm("Excluir esta ação?")) upd((d: DB) => { d.acoes = d.acoes.filter((x) => x.id !== a.id); delete d.tobe[a.id]; }); }}>×</button></div></div>
               <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>{a.descricao}</div>
               <div className="chips">{a.itemConta && <span className="chip b-purple">{nameById(db.itensConta, a.itemConta)}</span>}{a.tipoConta && <span className="chip">{nameById(db.tiposConta, a.tipoConta)}</span>}<span className="chip">{nameById(db.sistemas, a.sistema)}</span><span className="chip">{nameById(db.funcionarios, a.responsavel)}</span></div>
@@ -221,11 +227,14 @@ export function FlowBuilder() {
 
 function NodeEditor({ node, onClose, onSave }: any) {
   const { db } = useStore();
-  const [f, setF] = useState<any>({ ...node });
+  const [f, setF] = useState<any>({ ordem: "", ...node });
   const set = (k: string, v: any) => setF({ ...f, [k]: v });
   return (
     <Modal title="Editar processo" onClose={onClose} onSave={() => onSave(f)}>
-      <Field label="Nome"><input type="text" value={f.nome} onChange={(e) => set("nome", e.target.value)} /></Field>
+      <div className="row" style={{ gap: 10 }}>
+        <Field label="Nome"><input type="text" value={f.nome} onChange={(e) => set("nome", e.target.value)} /></Field>
+        <Field label="Sequência"><input type="text" placeholder="1, 2, 2.1…" style={{ width: 90 }} value={f.ordem} onChange={(e) => set("ordem", e.target.value)} /></Field>
+      </div>
       <Field label="Descrição"><textarea rows={2} value={f.descricao} onChange={(e) => set("descricao", e.target.value)} /></Field>
       <Field label="Tipo"><select value={f.tipo} onChange={(e) => set("tipo", e.target.value)}><option value="processo">Processo</option><option value="decisao">Decisão</option></select></Field>
       <Field label="Tipo de atendimento"><MultiSelect options={db.tiposAtendimento} value={f.tiposAtendimento} onChange={(v) => set("tiposAtendimento", v)} /></Field>
@@ -241,11 +250,14 @@ function NodeEditor({ node, onClose, onSave }: any) {
 
 function ActionEditor({ action, onClose, onSave }: any) {
   const { db } = useStore();
-  const [f, setF] = useState<any>({ nome: "", descricao: "", sistema: "", responsavel: "", tiposAtendimento: [], operadoras: [], itemConta: "", tipoConta: "", ...action });
+  const [f, setF] = useState<any>({ nome: "", descricao: "", sistema: "", responsavel: "", tiposAtendimento: [], operadoras: [], itemConta: "", tipoConta: "", ordem: "", ...action });
   const set = (k: string, v: any) => setF({ ...f, [k]: v });
   return (
     <Modal title={action.id ? "Editar ação" : "Nova ação"} onClose={onClose} onSave={() => { if (f.nome) onSave(f); }}>
-      <Field label="Nome"><input type="text" value={f.nome} onChange={(e) => set("nome", e.target.value)} /></Field>
+      <div className="row" style={{ gap: 10 }}>
+        <Field label="Nome"><input type="text" value={f.nome} onChange={(e) => set("nome", e.target.value)} /></Field>
+        <Field label="Sequência"><input type="text" placeholder="1, 2, 2.1…" style={{ width: 90 }} value={f.ordem} onChange={(e) => set("ordem", e.target.value)} /></Field>
+      </div>
       <Field label="Descrição"><textarea rows={2} value={f.descricao} onChange={(e) => set("descricao", e.target.value)} /></Field>
       <div className="row" style={{ gap: 10 }}>
         <Field label="Sistema"><select value={f.sistema} onChange={(e) => set("sistema", e.target.value)}><option value="">—</option>{db.sistemas.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}</select></Field>

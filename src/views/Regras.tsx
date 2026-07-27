@@ -2,21 +2,22 @@ import { useState } from "react";
 import { useStore } from "../store";
 import { uid, namesByIds } from "../lib/derive";
 import { PRIORIDADES, REGRA_STATUS, prioClass, regraStatusClass } from "../lib/constants";
-import { Badge, StatusBadge, Modal, Field, MultiSelect, MiniDropdown, Ic, icons } from "../ui";
+import { Badge, StatusBadge, Modal, Field, MultiSelect, MiniDropdown, Ic, icons, PastaBar, pastaMatch, pastaStamp } from "../ui";
 import type { DB } from "../types";
 
 export function Regras() {
   const { db, upd } = useStore();
+  const [pastaH, setPastaH] = useState<string | null>(null);
   const [editP, setEditP] = useState<any>(null);
   const [editR, setEditR] = useState<any>(null);
   const [f, setF] = useState({ operadora: "", item: "" });
   const matchP = (p: any) => (!f.operadora || (p.operadoras || []).includes(f.operadora)) && (!f.item || (p.itensConta || []).includes(f.item));
-  const matchR = (r: any) => (!f.operadora || (r.operadoras || []).includes(f.operadora)) && (!f.item || (r.itensConta || []).includes(f.item));
+  const matchR = (r: any) => (!f.operadora || (r.operadoras || []).includes(f.operadora)) && (!f.item || (r.itensConta || []).includes(f.item)) && pastaH !== null && pastaMatch(pastaH, "", r.pastaHospital, r.pastaOperadora);
   const problemas = db.problemas.filter(matchP);
-  const regras = db.regras.filter(matchR);
+  const regras = pastaH === null ? [] : db.regras.filter(matchR);
   return (
     <div>
-      <div className="page-head"><div className="h1">Regras de Auditoria</div><p>Cadastre problemas (dores e motivos de glosa) com um score de esforço (0–10) e as regras que os endereçam. Uma regra pode atender vários problemas.</p></div>
+      <div className="page-head"><div className="h1">Regras de Auditoria</div><p>Cadastre problemas (dores e motivos de glosa) com um score de esforço (0–10) e as regras que os endereçam. Problemas são uma biblioteca compartilhada; as regras que os endereçam são específicas de cada hospital/operadora.</p></div>
       <div className="filters">
         <select className="select-sm" value={f.operadora} onChange={(e) => setF({ ...f, operadora: e.target.value })}><option value="">Operadora</option>{db.operadoras.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}</select>
         <select className="select-sm" value={f.item} onChange={(e) => setF({ ...f, item: e.target.value })}><option value="">Item da conta</option>{db.itensConta.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}</select>
@@ -24,11 +25,11 @@ export function Regras() {
       </div>
       <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", alignItems: "start" }}>
         <div>
-          <div className="between" style={{ marginBottom: 10 }}><div className="h2">Motivos & Dores <span className="chip">{problemas.length}</span></div><button className="btn primary sm" onClick={() => setEditP({})}><Ic d={icons.plus} size={13} />Problema</button></div>
+          <div className="between" style={{ marginBottom: 10 }}><div className="h2">Motivos & Dores <span className="chip">{problemas.length}</span> <span className="dim" style={{ fontWeight: 400, fontSize: 11 }}>· biblioteca compartilhada</span></div><button className="btn primary sm" onClick={() => setEditP({})}><Ic d={icons.plus} size={13} />Problema</button></div>
           {problemas.map((p) => { const regrasRel = db.regras.filter((r) => (r.problemas || []).includes(p.id)); return (
             <div className="act-item" key={p.id}>
               <div className="between"><div className="row"><Badge cls={p.tipo === "Dor operacional" ? "b-blue" : "b-red"}>{p.tipo}</Badge><StatusBadge s={p.prioridade} fn={prioClass} /><span className="chip" title="Esforço / score">★ {p.esforco}/10</span></div>
-                <div className="row" style={{ gap: 4 }}><button className="btn ghost sm" onClick={() => setEditP(p)}>Editar</button><button className="btn ghost sm danger" onClick={() => upd((d: DB) => { d.problemas = d.problemas.filter((x) => x.id !== p.id); })}>×</button></div></div>
+                <div className="row" style={{ gap: 4 }}><button className="btn ghost sm" onClick={() => setEditP(p)}>Editar</button><button className="btn ghost sm danger" onClick={() => { if (confirm('Excluir o problema "' + p.nome + '"?')) upd((d: DB) => { d.problemas = d.problemas.filter((x) => x.id !== p.id); }); }}>×</button></div></div>
               <div style={{ fontWeight: 650, marginTop: 5 }}>{p.nome}</div>
               <div className="muted" style={{ fontSize: 12, margin: "2px 0 6px" }}>{p.descricao}</div>
               <div className="chips">{namesByIds(db.operadoras, p.operadoras).map((n, i) => <span key={i} className="chip">{n}</span>)}{namesByIds(db.itensConta, p.itensConta).map((n, i) => <span key={i} className="chip b-purple">{n}</span>)}{namesByIds(db.tiposAtendimento, p.tiposAtendimento).map((n, i) => <span key={i} className="chip b-blue">{n}</span>)}
@@ -37,6 +38,8 @@ export function Regras() {
           {!problemas.length && <div className="empty">Nenhum problema.</div>}
         </div>
         <div>
+          <PastaBar items={db.regras} hospital={pastaH} onChange={(h) => setPastaH(h)} />
+          {pastaH !== null && (<>
           <div className="between" style={{ marginBottom: 10 }}><div className="h2">Regras <span className="chip">{regras.length}</span></div><button className="btn primary sm" onClick={() => setEditR({})}><Ic d={icons.plus} size={13} />Regra</button></div>
           <div className="tbl-wrap"><div className="tbl-scroll"><table>
             <thead><tr><th>Regra</th><th>Item</th><th>Operadora</th><th>Problemas</th><th>Status</th><th /></tr></thead>
@@ -46,14 +49,15 @@ export function Regras() {
               <td><span className="chips">{namesByIds(db.operadoras, r.operadoras).map((n, i) => <span className="chip" key={i}>{n}</span>)}</span></td>
               <td><MiniDropdown label={(r.problemas || []).length + " problema(s)"} items={namesByIds(db.problemas, r.problemas)} /></td>
               <td><StatusBadge s={r.status} fn={regraStatusClass} /></td>
-              <td><div className="row" style={{ gap: 4 }}><button className="btn ghost sm" onClick={() => setEditR(r)}>Editar</button><button className="btn ghost sm danger" onClick={() => upd((d: DB) => { d.regras = d.regras.filter((x) => x.id !== r.id); })}>×</button></div></td>
+              <td><div className="row" style={{ gap: 4 }}><button className="btn ghost sm" onClick={() => setEditR(r)}>Editar</button><button className="btn ghost sm danger" onClick={() => { if (confirm('Excluir a regra "' + r.nome + '"?')) upd((d: DB) => { d.regras = d.regras.filter((x) => x.id !== r.id); }); }}>×</button></div></td>
             </tr>))}
             {!regras.length && <tr><td colSpan={6}><div className="empty">Nenhuma regra.</div></td></tr>}</tbody>
           </table></div></div>
+          </>)}
         </div>
       </div>
       {editP && <ProblemaEditor p={editP} onClose={() => setEditP(null)} onSave={(data: any) => { upd((d: DB) => { if (editP.id) Object.assign(d.problemas.find((x) => x.id === editP.id)!, data); else d.problemas.push({ id: uid("pb"), ...data }); }); setEditP(null); }} />}
-      {editR && <RegraEditor r={editR} onClose={() => setEditR(null)} onSave={(data: any) => { upd((d: DB) => { if (editR.id) Object.assign(d.regras.find((x) => x.id === editR.id)!, data); else d.regras.push({ id: uid("r"), ...data }); }); setEditR(null); }} />}
+      {editR && <RegraEditor r={editR} onClose={() => setEditR(null)} onSave={(data: any) => { upd((d: DB) => { if (editR.id) Object.assign(d.regras.find((x) => x.id === editR.id)!, data); else d.regras.push({ id: uid("r"), ...pastaStamp(pastaH!, ""), ...data }); }); setEditR(null); }} />}
     </div>
   );
 }

@@ -2,11 +2,13 @@ import { useState } from "react";
 import { useStore } from "../store";
 import { deriveTobe, nameById, namesByIds } from "../lib/derive";
 import { STATUS_FUTURO, OWNERS, futuroClass, ownerClass } from "../lib/constants";
-import { StatusBadge, Badge, Chips } from "../ui";
+import { StatusBadge, Badge, Chips, PastaBar, pastaMatch } from "../ui";
 
 export function ChangeMgmt() {
   const { db } = useStore();
-  const rows = deriveTobe(db);
+  const [pastaH, setPastaH] = useState<string | null>(null);
+  const allRows = deriveTobe(db);
+  const rows = pastaH === null ? [] : allRows.filter((r) => r.proc && pastaMatch(pastaH, "", r.proc.pastaHospital, r.proc.pastaOperadora));
   const [f, setF] = useState({ owner: "", status: "", setor: "" });
   const filtered = rows.filter((r) => (!f.owner || r.owner === f.owner) && (!f.status || r.statusFuturo === f.status) && (!f.setor || (r.proc && r.proc.setor === f.setor)));
   const rivio = rows.filter((r) => r.owner === "Rivio").length;
@@ -19,6 +21,8 @@ export function ChangeMgmt() {
   return (
     <div>
       <div className="page-head"><div className="h1">Change Management</div><p>Plano de transição: o que muda em cada ação, quem assume (Rivio ou Hospital) e o impacto operacional por setor. Base para comunicação e treinamento na virada AS IS → To Be.</p></div>
+      <PastaBar items={db.processos} hospital={pastaH} onChange={(h) => setPastaH(h)} />
+      {pastaH !== null && (<>
       <div className="grid" style={{ gridTemplateColumns: "repeat(4,1fr)" }}>
         <Stat label="Ações assumidas pela Rivio" val={rivio} color="var(--purple)" />
         <Stat label="Mantidas pelo Hospital" val={hosp} color="var(--blue)" />
@@ -44,6 +48,7 @@ export function ChangeMgmt() {
         </tr>); })}
         {!filtered.length && <tr><td colSpan={7}><div className="empty">Sem ações mapeadas.</div></td></tr>}</tbody>
       </table></div></div>
+      </>)}
     </div>
   );
 }
