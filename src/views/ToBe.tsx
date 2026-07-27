@@ -50,12 +50,12 @@ export function ToBe() {
         <span className="chip" style={{ marginLeft: "auto" }}>{filtered.length} ações</span>
       </div>
       <div className="tbl-wrap"><div className="tbl-scroll"><table>
-        <thead><tr><th>Ação</th><th>Processo</th><th>Operadora</th><th>Atendimento</th><th>Status futuro</th><th>Owner</th><th>Unit of Work / O que mudou</th><th>Gap</th></tr></thead>
+        <thead><tr><th>Ação</th><th>Processo</th><th>Sistema</th><th>Setor</th><th>Status futuro</th><th>Owner</th><th>Unit of Work / O que mudou</th><th>Gap</th></tr></thead>
         <tbody>{filtered.map((r) => (<tr key={r.id}>
           <td style={{ minWidth: 180 }}><div style={{ fontWeight: 600 }}>{r.ordem && <span className="chip" style={{ marginRight: 6 }} title="Sequência da ação">{r.ordem}</span>}{r.nome}</div></td>
           <td className="muted">{r.proc ? (<>{r.proc.ordem && <span className="chip" style={{ marginRight: 6 }} title="Sequência do processo">{r.proc.ordem}</span>}{r.proc.nome}</>) : "—"}</td>
-          <td><Chips items={namesByIds(db.operadoras, r.operadoras)} /></td>
-          <td><Chips items={namesByIds(db.tiposAtendimento, r.tiposAtendimento)} /></td>
+          <td className="muted">{r.sistema ? nameById(db.sistemas, r.sistema) : "—"}</td>
+          <td className="muted">{r.proc ? nameById(db.setores, r.proc.setor) : "—"}</td>
           <td><select className="select-sm" value={r.statusFuturo} onChange={(e) => setStatus(r.id, e.target.value)}>{STATUS_FUTURO.map((s) => <option key={s}>{s}</option>)}</select></td>
           <td><select className="select-sm" value={r.owner} onChange={(e) => setOwner(r.id, e.target.value)}>{OWNERS.map((s) => <option key={s}>{s}</option>)}</select></td>
           <td style={{ minWidth: 220 }}>{r.uows.length > 0 ? (<div>

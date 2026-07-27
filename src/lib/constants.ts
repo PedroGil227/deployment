@@ -1,4 +1,4 @@
-export const STATUS_FUTURO = ["Eliminada", "Executada pelo produto", "Executada por ação humana"];
+export const STATUS_FUTURO = ["Eliminada", "Executada pelo produto", "Executada por ação humana", "Mantém o fluxo atual"];
 export const OWNERS = ["Rivio", "Hospital"];
 export const PRIORIDADES = ["Alta", "Média", "Baixa"];
 export const REGRA_STATUS = ["Ativa", "Em teste", "Inativa"];
@@ -11,7 +11,7 @@ export const MODOS_UOW = ["Automático (produto)", "Assistido (produto+manual)",
 export const COBERTURAS = ["Coberta", "Em refinamento", "WIP", "Não coberta"];
 export const PLATAFORMAS_UOW = ["Marvin", "Trinity", "ERP", "Unificado", "Metabase", "n/a"];
 
-export const futuroClass = (s: string) => (({ "Eliminada": "b-red", "Executada pelo produto": "b-green", "Executada por ação humana": "b-blue" } as any)[s] || "b-gray");
+export const futuroClass = (s: string) => (({ "Eliminada": "b-red", "Executada pelo produto": "b-green", "Executada por ação humana": "b-blue", "Mantém o fluxo atual": "b-gray" } as any)[s] || "b-gray");
 export const ownerClass = (o: string) => (o === "Rivio" ? "b-purple" : "b-gray");
 export const prioClass = (p: string) => (({ Alta: "b-red", "Média": "b-amber", Baixa: "b-gray" } as any)[p] || "b-gray");
 export const regraStatusClass = (s: string) => (({ Ativa: "b-green", "Em teste": "b-amber", Inativa: "b-gray" } as any)[s] || "b-gray");
