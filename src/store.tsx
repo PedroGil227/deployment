@@ -36,6 +36,7 @@ function normalize(val: any): DB {
     gapsManuais: toArr(val?.gapsManuais), testes: toArr(val?.testes),
     perguntas: toArr(val?.perguntas), respostas: toRec(val?.respostas),
     pendencias: toArr(val?.pendencias),
+    checklist: toRec(val?.checklist),
   };
 }
 

@@ -67,6 +67,9 @@ export interface Pendencia {
 }
 
 
+// Respostas do Questionário AS IS (checklist embutido). status: "" (vazio) | "check" | "x" (pendência).
+export interface ChecklistAnswer { status: string; comentario: string; editadoPor: string; editadoEm: string; }
+
 export interface DB {
   operadoras: Named[];
   tiposAtendimento: Named[];
@@ -89,6 +92,7 @@ export interface DB {
   perguntas: Pergunta[];
   respostas: Record<string, RespostaEntry>;
   pendencias: Pendencia[];
+  checklist: Record<string, ChecklistAnswer>;
 }
 
 export type DBKey = keyof DB;
