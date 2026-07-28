@@ -39,6 +39,9 @@ function normalize(val: any): DB {
     pendencias: toArr(val?.pendencias),
     checklist: toRec(val?.checklist),
     escopos: toArr(val?.escopos),
+    documentos: toArr(val?.documentos),
+    testChecklist: toRec(val?.testChecklist),
+    regraTestes: toRec(val?.regraTestes),
   };
 }
 

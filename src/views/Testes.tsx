@@ -1,104 +1,130 @@
-import { useRef, useState } from "react";
-import * as XLSX from "xlsx";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useStore } from "../store";
-import { uid, nameById } from "../lib/derive";
-import { Badge, Modal, Field, Ic, icons, PastaBar, pastaMatch, pastaStamp } from "../ui";
-import type { DB } from "../types";
+import { useAuth } from "../auth";
+import { CHECK_AUDITORIA, CHECK_AUDITORIA_SECOES, CHECK_FDE, CHECK_FDE_SECOES, type TestChecklistItem } from "../data/testchecklists";
+import { regraStatusClass } from "../lib/constants";
+import { StatusBadge } from "../ui";
+import type { DB, ChecklistAnswer } from "../types";
 
-// Lê a aba "Plano - <Hospital>" gerada pelo relatório de plano de testes estatístico
-// e converte cada regra num registro de Teste pendente (nota 0, ainda não executado).
-function parseTestPlan(buf: ArrayBuffer) {
-  const wb = XLSX.read(buf, { type: "array" });
-  const sheetName = wb.SheetNames.find((n) => /^plano/i.test(n)) || wb.SheetNames[0];
-  const json: any[] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: "" });
-  return json.map((raw) => {
-    const conteudo = String(raw["Conteúdo exigido na conta de teste"] ?? "").trim();
-    const descricaoRegra = String(raw["Descrição / Nome da Regra"] ?? "").trim();
-    const confianca = Number(raw["Confiança da associação"] ?? 0) || 0;
-    return {
-      descricao: conteudo || (descricaoRegra ? "Reproduzir a condição: " + descricaoRegra : ""),
-      tipoTeste: confianca > 0 ? "Feature Produto" : "Regra",
-    };
-  }).filter((r) => r.descricao);
+const EMPTY: ChecklistAnswer = { status: "", comentario: "", editadoPor: "", editadoEm: "" };
+const NEXT: Record<string, string> = { "": "check", check: "x", x: "" };
+
+const boxStyle = (st: string): CSSProperties => ({
+  width: 26, height: 26, borderRadius: 6, lineHeight: 1, fontSize: 15, fontWeight: 800, cursor: "pointer",
+  display: "flex", alignItems: "center", justifyContent: "center",
+  border: "1.5px solid " + (st === "check" ? "#16a34a" : st === "x" ? "#dc2626" : "var(--border-strong)"),
+  background: st === "check" ? "var(--green-soft)" : st === "x" ? "var(--red-soft)" : "#fff",
+  color: st === "check" ? "#15803d" : st === "x" ? "#b91c1c" : "var(--text-3)",
+});
+const boxBin = (on: boolean): CSSProperties => ({
+  width: 26, height: 26, borderRadius: 6, lineHeight: 1, fontSize: 15, fontWeight: 800, cursor: "pointer",
+  display: "flex", alignItems: "center", justifyContent: "center",
+  border: "1.5px solid " + (on ? "#16a34a" : "var(--border-strong)"),
+  background: on ? "var(--green-soft)" : "#fff", color: on ? "#15803d" : "var(--text-3)",
+});
+
+function ComentarioInput({ value, onCommit, placeholder }: { value: string; onCommit: (v: string) => void; placeholder: string }) {
+  const [v, setV] = useState(value);
+  useEffect(() => setV(value), [value]);
+  return (
+    <input type="text" value={v} placeholder={placeholder} style={{ width: "100%" }}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={() => { if (v !== value) onCommit(v); }}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+  );
 }
 
-export function Testes() {
+function ChecklistSection({ items, secoes }: { items: TestChecklistItem[]; secoes: string[] }) {
   const { db, upd } = useStore();
-  const [pastaH, setPastaH] = useState<string | null>(null);
-  const [f, setF] = useState({ tipoTeste: "", ambiente: "" });
-  const [edit, setEdit] = useState<any>(null);
-  const [importMsg, setImportMsg] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
-  const items = db.testes.filter((t) => (!f.tipoTeste || t.tipoTeste === f.tipoTeste) && (!f.ambiente || t.ambiente === f.ambiente));
-  const media = items.length ? (items.reduce((s, t) => s + (+t.nota || 0), 0) / items.length).toFixed(1) : "—";
-
-  const onImportFile = async (file: File) => {
-    setImportMsg("");
-    try {
-      const buf = await file.arrayBuffer();
-      const parsed = parseTestPlan(buf);
-      if (!parsed.length) { setImportMsg("Nenhuma linha reconhecida — confira se é a planilha do Plano de Testes."); return; }
-      upd((d: DB) => {
-        parsed.forEach((p) => {
-          d.testes.push({
-            id: uid("t"), data: new Date().toISOString().slice(0, 10), tipoConta: "",
-            tipoTeste: p.tipoTeste, ambiente: "Homologação", dono: "", descricao: p.descricao, nota: 0,
-          });
-        });
-      });
-      setImportMsg(`${parsed.length} teste(s) importado(s) como pendente (nota 0).`);
-    } catch (e: any) {
-      setImportMsg("Não consegui importar: " + (e?.message || "arquivo inválido"));
-    }
-  };
-
+  const { user } = useAuth();
+  const ans = (id: string): ChecklistAnswer => (db.testChecklist && db.testChecklist[id]) || EMPTY;
+  const stamp = () => ({ editadoPor: user?.email || "—", editadoEm: new Date().toISOString().slice(0, 10) });
+  const cycle = (id: string) => upd((d: DB) => { const c: ChecklistAnswer = { ...EMPTY, ...(d.testChecklist[id] || {}) }; c.status = NEXT[c.status || ""]; Object.assign(c, stamp()); d.testChecklist[id] = c; });
+  const setC = (id: string, v: string) => upd((d: DB) => { const c: ChecklistAnswer = { ...EMPTY, ...(d.testChecklist[id] || {}) }; c.comentario = v; Object.assign(c, stamp()); d.testChecklist[id] = c; });
+  const checked = items.filter((q) => ans(q.id).status === "check").length;
+  const pend = items.filter((q) => ans(q.id).status === "x").length;
   return (
     <div>
-      <div className="page-head"><div className="h1">Testes</div><p>Registro dos testes de regras e features do produto. A nota (0–10) indica o quanto foi aprovado — 10 = 100% validado.</p></div>
-      <div className="filters">
-        <select className="select-sm" value={f.tipoTeste} onChange={(e) => setF({ ...f, tipoTeste: e.target.value })}><option value="">Tipo de teste</option><option>Regra</option><option>Feature Produto</option></select>
-        <select className="select-sm" value={f.ambiente} onChange={(e) => setF({ ...f, ambiente: e.target.value })}><option value="">Ambiente</option><option>Homologação</option><option>Produção</option></select>
-        <span className="chip">Nota média: {media}</span>
-        <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={(e) => { const file = e.target.files?.[0]; if (file) onImportFile(file); e.target.value = ""; }} />
-        <button className="btn ghost sm" style={{ marginLeft: "auto" }} onClick={() => fileRef.current?.click()}><Ic d={icons.plus} size={13} />Importar plano de testes</button>
-        <button className="btn primary sm" onClick={() => setEdit({})}><Ic d={icons.plus} size={13} />Registrar teste</button>
+      <div className="row" style={{ gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <span className="badge b-green">✓ {checked} ok</span>
+        <span className="badge b-red">✕ {pend} pendências</span>
+        <span className="chip">{checked}/{items.length}</span>
       </div>
-      {importMsg && <div className="dim" style={{ fontSize: 12, marginBottom: 10 }}>{importMsg}</div>}
-      <div className="tbl-wrap"><div className="tbl-scroll"><table><thead><tr><th>Data</th><th>Tipo de conta</th><th>Tipo de teste</th><th>Ambiente</th><th>Dono</th><th>Descrição</th><th>Nota</th><th /></tr></thead>
-        <tbody>{items.map((t) => (<tr key={t.id}>
-          <td className="muted">{t.data}</td>
-          <td>{nameById(db.tiposConta, t.tipoConta)}</td>
-          <td><Badge cls={t.tipoTeste === "Regra" ? "b-amber" : "b-blue"}>{t.tipoTeste}</Badge></td>
-          <td><Badge cls={t.ambiente === "Produção" ? "b-green" : "b-gray"}>{t.ambiente}</Badge></td>
-          <td className="muted">{t.dono}</td>
-          <td className="muted" style={{ maxWidth: 260, fontSize: 12.5 }}>{t.descricao}</td>
-          <td><Badge cls={t.nota >= 8 ? "b-green" : t.nota >= 5 ? "b-amber" : "b-red"}>{t.nota}/10</Badge></td>
-          <td><div className="row" style={{ gap: 4 }}><button className="btn ghost sm" onClick={() => setEdit(t)}>Editar</button><button className="btn ghost sm danger" onClick={() => { if (confirm("Excluir este registro de teste?")) upd((d: DB) => { d.testes = d.testes.filter((x) => x.id !== t.id); }); }}>×</button></div></td>
-        </tr>))}
-        {!items.length && <tr><td colSpan={8}><div className="empty">Nenhum teste registrado.</div></td></tr>}</tbody>
-      </table></div></div>
-      {edit && <TesteEditor t={edit} onClose={() => setEdit(null)} onSave={(data: any) => { upd((d: DB) => { if (edit.id) Object.assign(d.testes.find((x) => x.id === edit.id)!, data); else d.testes.push({ id: uid("t"), ...data }); }); setEdit(null); }} />}
+      {secoes.map((sec) => {
+        const its = items.filter((i) => i.secao === sec);
+        if (!its.length) return null;
+        const c = its.filter((q) => ans(q.id).status === "check").length;
+        return (
+          <div className="card" key={sec} style={{ overflow: "hidden", marginBottom: 12 }}>
+            <div className="rel-col-h"><span>{sec}</span><span className="chip">{c}/{its.length}</span></div>
+            <div className="tbl-scroll"><table>
+              <thead><tr><th style={{ width: 170 }}>Última edição</th><th style={{ width: 60 }}>Check</th><th>Pergunta</th><th style={{ width: 300 }}>Comentário</th></tr></thead>
+              <tbody>{its.map((q) => { const a = ans(q.id); return (
+                <tr key={q.id}>
+                  <td className="dim" style={{ fontSize: 11 }}>{a.editadoPor ? (<>{a.editadoPor}{a.editadoEm && <div style={{ opacity: 0.7 }}>{a.editadoEm}</div>}</>) : "—"}</td>
+                  <td><button style={boxStyle(a.status)} onClick={() => cycle(q.id)} title="Clique: vazio → ✓ → ✕">{a.status === "check" ? "✓" : a.status === "x" ? "✕" : ""}</button></td>
+                  <td style={{ minWidth: 300 }}>{q.pergunta}</td>
+                  <td><ComentarioInput value={a.comentario} onCommit={(v) => setC(q.id, v)} placeholder="Observações…" /></td>
+                </tr>
+              ); })}</tbody>
+            </table></div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function TesteEditor({ t, onClose, onSave }: any) {
-  const { db } = useStore();
-  const [f, setF] = useState({ data: new Date().toISOString().slice(0, 10), tipoConta: "", tipoTeste: "Regra", ambiente: "Homologação", dono: "", descricao: "", nota: 10, ...t });
-  const set = (k: string, v: any) => setF({ ...f, [k]: v });
+function RegraTestSection() {
+  const { db, upd } = useStore();
+  const { user } = useAuth();
+  const ans = (id: string): ChecklistAnswer => (db.regraTestes && db.regraTestes[id]) || EMPTY;
+  const stamp = () => ({ editadoPor: user?.email || "—", editadoEm: new Date().toISOString().slice(0, 10) });
+  // Ao desmarcar o teste, se a regra estava Ativa, volta para "Em teste" (regra só é Ativa com teste Ok).
+  const toggle = (rid: string) => upd((d: DB) => {
+    const c: ChecklistAnswer = { ...EMPTY, ...(d.regraTestes[rid] || {}) };
+    const novo = c.status === "check" ? "" : "check";
+    c.status = novo; Object.assign(c, stamp()); d.regraTestes[rid] = c;
+    if (novo !== "check") { const r = d.regras.find((x) => x.id === rid); if (r && r.status === "Ativa") r.status = "Em teste"; }
+  });
+  const setC = (rid: string, v: string) => upd((d: DB) => { const c: ChecklistAnswer = { ...EMPTY, ...(d.regraTestes[rid] || {}) }; c.comentario = v; Object.assign(c, stamp()); d.regraTestes[rid] = c; });
+  const ok = db.regras.filter((r) => ans(r.id).status === "check").length;
   return (
-    <Modal title={t.id ? "Editar teste" : "Registrar teste"} onClose={onClose} onSave={() => { if (f.descricao || f.dono) onSave(f); }}>
-      <div className="row" style={{ gap: 10 }}>
-        <Field label="Data do teste"><input type="date" value={f.data} onChange={(e) => set("data", e.target.value)} /></Field>
-        <Field label="Tipo de conta"><select value={f.tipoConta} onChange={(e) => set("tipoConta", e.target.value)}><option value="">—</option>{db.tiposConta.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}</select></Field>
+    <div>
+      <div className="between" style={{ marginBottom: 10 }}>
+        <div className="h2">Testes de regra <span className="dim" style={{ fontWeight: 400, fontSize: 11 }}>· a regra só fica Ativa (aba Regras) com o teste marcado como Ok</span></div>
+        <span className="chip">{ok}/{db.regras.length} ok</span>
       </div>
-      <div className="row" style={{ gap: 10 }}>
-        <Field label="Tipo de teste"><select value={f.tipoTeste} onChange={(e) => set("tipoTeste", e.target.value)}><option>Regra</option><option>Feature Produto</option></select></Field>
-        <Field label="Ambiente"><select value={f.ambiente} onChange={(e) => set("ambiente", e.target.value)}><option>Homologação</option><option>Produção</option></select></Field>
+      <div className="tbl-wrap"><div className="tbl-scroll"><table>
+        <thead><tr><th style={{ width: 170 }}>Última edição</th><th style={{ width: 60 }}>Ok</th><th>Regra</th><th style={{ width: 110 }}>Status</th><th style={{ width: 320 }}>Contas testadas</th></tr></thead>
+        <tbody>{db.regras.map((r) => { const a = ans(r.id); const on = a.status === "check"; return (
+          <tr key={r.id}>
+            <td className="dim" style={{ fontSize: 11 }}>{a.editadoPor ? (<>{a.editadoPor}{a.editadoEm && <div style={{ opacity: 0.7 }}>{a.editadoEm}</div>}</>) : "—"}</td>
+            <td><button style={boxBin(on)} onClick={() => toggle(r.id)} title="Marcar teste como Ok">{on ? "✓" : ""}</button></td>
+            <td style={{ fontWeight: 600, minWidth: 180 }}>{r.nome}</td>
+            <td><StatusBadge s={r.status} fn={regraStatusClass} /></td>
+            <td><ComentarioInput value={a.comentario} onCommit={(v) => setC(r.id, v)} placeholder="Contas testadas…" /></td>
+          </tr>
+        ); })}
+        {!db.regras.length && <tr><td colSpan={5}><div className="empty">Nenhuma regra cadastrada.</div></td></tr>}</tbody>
+      </table></div></div>
+    </div>
+  );
+}
+
+export function Testes() {
+  const [tab, setTab] = useState<"aud" | "fde" | "regras">("aud");
+  return (
+    <div>
+      <div className="page-head"><div className="h1">Testes</div><p>Homologação em três frentes: checklist de Auditoria, checklist de Integrações (FDE) e o teste de cada regra criada. Clique na caixa para alternar (vazio → ✓ → ✕ nos checklists; ✓ Ok nos testes de regra).</p></div>
+      <div className="chips" style={{ marginBottom: 16 }}>
+        <button className={"ce-pill " + (tab === "aud" ? "active" : "")} onClick={() => setTab("aud")}>Checklist Auditoria</button>
+        <button className={"ce-pill " + (tab === "fde" ? "active" : "")} onClick={() => setTab("fde")}>Checklist FDE</button>
+        <button className={"ce-pill " + (tab === "regras" ? "active" : "")} onClick={() => setTab("regras")}>Testes de regra</button>
       </div>
-      <Field label="Dono"><input type="text" placeholder="Nome do responsável pelo teste" value={f.dono} onChange={(e) => set("dono", e.target.value)} /></Field>
-      <Field label="Descrição"><textarea rows={3} value={f.descricao} onChange={(e) => set("descricao", e.target.value)} /></Field>
-      <Field label={"Nota: " + f.nota + "/10 (10 = 100% aprovado)"}><input type="range" min={0} max={10} value={f.nota} onChange={(e) => set("nota", +e.target.value)} /></Field>
-    </Modal>
+      {tab === "aud" && <ChecklistSection items={CHECK_AUDITORIA} secoes={CHECK_AUDITORIA_SECOES} />}
+      {tab === "fde" && <ChecklistSection items={CHECK_FDE} secoes={CHECK_FDE_SECOES} />}
+      {tab === "regras" && <RegraTestSection />}
+    </div>
   );
 }

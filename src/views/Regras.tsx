@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useStore } from "../store";
 import { uid, nameById, namesByIds } from "../lib/derive";
 import { REGRA_STATUS, regraStatusClass } from "../lib/constants";
-import { StatusBadge, Modal, Field, MultiSelect, MiniDropdown, Ic, icons } from "../ui";
+import { StatusBadge, Modal, Field, MultiSelect, MiniDropdown, FilterMulti, anySel, Ic, icons } from "../ui";
 import type { DB, Escopo, Named } from "../types";
 
 // Peso com estado local — grava no Firebase só ao sair do campo.
@@ -52,11 +52,11 @@ export function Regras() {
   const { db, upd } = useStore();
   const [editE, setEditE] = useState<any>(null);
   const [editR, setEditR] = useState<any>(null);
-  const [f, setF] = useState({ operadora: "", item: "" });
+  const [f, setF] = useState<{ operadora: string[]; item: string[] }>({ operadora: [], item: [] });
 
   const itemIds = new Set(db.itensConta.map((i) => i.id));
-  const matchEscOp = (e: Escopo) => !f.operadora || (e.operadoras || []).length === 0 || (e.operadoras || []).includes(f.operadora);
-  const matchR = (r: any) => (!f.operadora || (r.operadoras || []).includes(f.operadora)) && (!f.item || (r.itensConta || []).includes(f.item));
+  const matchEscOp = (e: Escopo) => !f.operadora.length || (e.operadoras || []).length === 0 || (e.operadoras || []).some((o) => f.operadora.includes(o));
+  const matchR = (r: any) => anySel(f.operadora, r.operadoras || []) && anySel(f.item, r.itensConta || []);
   const regras = db.regras.filter(matchR);
 
   const setPeso = (id: string, peso: number) => upd((d: DB) => { const e = d.escopos.find((x) => x.id === id); if (e) e.peso = peso; });
@@ -65,11 +65,11 @@ export function Regras() {
   // Grupos por item da conta (na ordem do cadastro) + um grupo "Sem item da conta" para escopos órfãos.
   const grupos: { key: string; nome: string; itens: Escopo[] }[] = [];
   db.itensConta.forEach((it) => {
-    if (f.item && it.id !== f.item) return;
+    if (f.item.length && !f.item.includes(it.id)) return;
     const items = db.escopos.filter((e) => e.itemConta === it.id && matchEscOp(e));
     grupos.push({ key: it.id, nome: it.nome, itens: items });
   });
-  if (!f.item) {
+  if (!f.item.length) {
     const orfaos = db.escopos.filter((e) => !itemIds.has(e.itemConta) && matchEscOp(e));
     if (orfaos.length) grupos.push({ key: "__sem__", nome: "Sem item da conta", itens: orfaos });
   }
@@ -79,9 +79,9 @@ export function Regras() {
     <div>
       <div className="page-head"><div className="h1">Regras de Auditoria</div><p>Os <b>escopos</b> são dores/motivos de glosa genéricos, agrupados por item da conta (biblioteca compartilhada). Cada escopo tem um <b>peso</b> (usado na penetração ponderada) e pode valer para todas as operadoras ou operadoras específicas. As <b>regras</b> endereçam um ou mais escopos.</p></div>
       <div className="filters">
-        <select className="select-sm" value={f.operadora} onChange={(e) => setF({ ...f, operadora: e.target.value })}><option value="">Operadora</option>{db.operadoras.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}</select>
-        <select className="select-sm" value={f.item} onChange={(e) => setF({ ...f, item: e.target.value })}><option value="">Item da conta</option>{db.itensConta.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}</select>
-        {(f.operadora || f.item) && <button className="btn ghost sm" onClick={() => setF({ operadora: "", item: "" })}>Limpar</button>}
+        <FilterMulti label="Operadora" options={db.operadoras} value={f.operadora} onChange={(v) => setF({ ...f, operadora: v })} />
+        <FilterMulti label="Item da conta" options={db.itensConta} value={f.item} onChange={(v) => setF({ ...f, item: v })} />
+        {(f.operadora.length || f.item.length) ? <button className="btn ghost sm" onClick={() => setF({ operadora: [], item: [] })}>Limpar</button> : null}
       </div>
       <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", alignItems: "start" }}>
         {/* ---------- Escopos ---------- */}
@@ -124,7 +124,7 @@ export function Regras() {
       </div>
 
       {editE && <EscopoEditor e={editE} onClose={() => setEditE(null)} onSave={(data: any) => { upd((d: DB) => { if (editE.id) Object.assign(d.escopos.find((x) => x.id === editE.id)!, data); else d.escopos.push({ id: uid("esc"), ...data }); }); setEditE(null); }} />}
-      {editR && <RegraEditor r={editR} onClose={() => setEditR(null)} onSave={(data: any) => { upd((d: DB) => { if (editR.id) Object.assign(d.regras.find((x) => x.id === editR.id)!, data); else d.regras.push({ id: uid("r"), ...data }); }); setEditR(null); }} />}
+      {editR && <RegraEditor r={editR} testeOk={!!(editR.id && db.regraTestes[editR.id] && db.regraTestes[editR.id].status === "check")} onClose={() => setEditR(null)} onSave={(data: any) => { upd((d: DB) => { if (editR.id) Object.assign(d.regras.find((x) => x.id === editR.id)!, data); else d.regras.push({ id: uid("r"), ...data }); }); setEditR(null); }} />}
     </div>
   );
 }
@@ -145,15 +145,15 @@ function EscopoEditor({ e, onClose, onSave }: any) {
   );
 }
 
-function RegraEditor({ r, onClose, onSave }: any) {
+function RegraEditor({ r, testeOk, onClose, onSave }: any) {
   const { db } = useStore();
-  const [f, setF] = useState<any>({ nome: "", descricao: "", itensConta: [], operadoras: [], tiposAtendimento: [], escopos: [], status: "Ativa", obs: "", ...r });
+  const [f, setF] = useState<any>({ nome: "", descricao: "", itensConta: [], operadoras: [], tiposAtendimento: [], escopos: [], status: "Em teste", obs: "", ...r });
   const set = (k: string, v: any) => setF({ ...f, [k]: v });
   return (
-    <Modal title={r.id ? "Editar regra" : "Nova regra"} onClose={onClose} onSave={() => { if (f.nome) onSave(f); }}>
+    <Modal title={r.id ? "Editar regra" : "Nova regra"} onClose={onClose} onSave={() => { if (!f.nome) return; if (f.status === "Ativa" && !testeOk) { alert("A regra só pode ficar Ativa quando o teste estiver marcado como Ok na aba Testes."); return; } onSave(f); }}>
       <Field label="Nome"><input type="text" value={f.nome} onChange={(e) => set("nome", e.target.value)} /></Field>
       <Field label="Descrição"><textarea rows={2} value={f.descricao} onChange={(e) => set("descricao", e.target.value)} /></Field>
-      <Field label="Status"><select value={f.status} onChange={(e) => set("status", e.target.value)}>{REGRA_STATUS.map((x) => <option key={x}>{x}</option>)}</select></Field>
+      <Field label="Status"><select value={f.status} onChange={(e) => set("status", e.target.value)}>{REGRA_STATUS.map((x) => <option key={x} value={x} disabled={x === "Ativa" && !testeOk}>{x}{x === "Ativa" && !testeOk ? " (requer teste Ok)" : ""}</option>)}</select>{!testeOk && <div className="dim" style={{ fontSize: 11, marginTop: 3 }}>Para ativar, marque o teste desta regra como Ok na aba Testes.</div>}</Field>
       <Field label="Operadora (múltipla)"><MultiSelect options={db.operadoras} value={f.operadoras} onChange={(v) => set("operadoras", v)} /></Field>
       <Field label="Item da conta (múltipla)"><MultiSelect options={db.itensConta} value={f.itensConta} onChange={(v) => set("itensConta", v)} /></Field>
       <Field label="Tipo de atendimento (múltipla)"><MultiSelect options={db.tiposAtendimento} value={f.tiposAtendimento} onChange={(v) => set("tiposAtendimento", v)} /></Field>

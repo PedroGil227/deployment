@@ -2,16 +2,16 @@ import { useState } from "react";
 import { useStore } from "../store";
 import { deriveTobe, nameById, namesByIds } from "../lib/derive";
 import { STATUS_FUTURO, OWNERS, futuroClass, ownerClass } from "../lib/constants";
-import { StatusBadge, Badge, Chips, PastaBar, pastaMatch } from "../ui";
+import { StatusBadge, Badge, Chips, FilterMulti, anySel, inSel } from "../ui";
 
 export function ChangeMgmt() {
   const { db } = useStore();
   const [pastaH, setPastaH] = useState<string | null>(null);
   const allRows = deriveTobe(db);
   const rows = allRows;
-  const [f, setF] = useState({ owner: "", status: "", setor: "" });
+  const [f, setF] = useState<{ owner: string[]; status: string[]; setor: string[] }>({ owner: [], status: [], setor: [] });
   const parseOrd = (v?: string) => { const n = parseFloat(String(v ?? "").replace(",", ".")); return isNaN(n) ? Infinity : n; };
-  const filtered = rows.filter((r) => (!f.owner || r.owner === f.owner) && (!f.status || r.statusFuturo === f.status) && (!f.setor || (r.proc && r.proc.setor === f.setor)))
+  const filtered = rows.filter((r) => inSel(f.owner, r.owner) && inSel(f.status, r.statusFuturo) && (!f.setor.length || (r.proc ? f.setor.includes(r.proc.setor) : false)))
     .sort((a, b) => {
       const pa = parseOrd(a.proc?.ordem), pb = parseOrd(b.proc?.ordem);
       if (pa !== pb) return pa - pb;
@@ -35,9 +35,9 @@ export function ChangeMgmt() {
         <Stat label="Atividades eliminadas" val={eli} color="var(--text-2)" />
       </div>
       <div className="filters" style={{ marginTop: 16 }}>
-        <select className="select-sm" value={f.owner} onChange={(e) => setF({ ...f, owner: e.target.value })}><option value="">Owner</option>{OWNERS.map((s) => <option key={s}>{s}</option>)}</select>
-        <select className="select-sm" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}><option value="">Status futuro</option>{STATUS_FUTURO.map((s) => <option key={s}>{s}</option>)}</select>
-        <select className="select-sm" value={f.setor} onChange={(e) => setF({ ...f, setor: e.target.value })}><option value="">Setor</option>{db.setores.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}</select>
+        <FilterMulti label="Owner" options={OWNERS.map((s) => ({ id: s, nome: s }))} value={f.owner} onChange={(v) => setF({ ...f, owner: v })} />
+        <FilterMulti label="Status futuro" options={STATUS_FUTURO.map((s) => ({ id: s, nome: s }))} value={f.status} onChange={(v) => setF({ ...f, status: v })} />
+        <FilterMulti label="Setor" options={db.setores} value={f.setor} onChange={(v) => setF({ ...f, setor: v })} />
         <span className="chip" style={{ marginLeft: "auto" }}>{filtered.length} mudanças</span>
       </div>
       <div className="tbl-wrap"><div className="tbl-scroll"><table>

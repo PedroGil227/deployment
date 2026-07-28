@@ -26,7 +26,7 @@ export function DashProcesso({ go }: { go: (v: string) => void }) {
   return (
     <div>
       <div className="page-head"><div className="h1">Dashboard · Processo</div><p>Análise do fluxo AS IS: volume de ações, quanto já é coberto pelo produto e quebras por setor e processo.</p></div>
-      <div className="grid" style={{ gridTemplateColumns: "repeat(6,1fr)" }}>
+      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
         <Stat label="Processos" val={db.processos.length} />
         <Stat label="Total de ações" val={total} />
         <Stat label="Cobertas por produto" val={cobertas} color="var(--green)" />
@@ -91,7 +91,7 @@ export function DashRegras() {
   return (
     <div>
       <div className="page-head"><div className="h1">Dashboard · Regras</div><p>Penetração das regras sobre os escopos. Um escopo é considerado <b>coberto</b> quando tem ao menos uma regra <b>Ativa</b>. Alterne entre a penetração <b>absoluta</b> (contagem de escopos) e a <b>ponderada</b> (pelo peso de cada escopo).</p></div>
-      <div className="grid" style={{ gridTemplateColumns: "repeat(5,1fr)" }}>
+      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
         <Stat label="Escopos" val={totalEscopos} />
         <Stat label="Cobertos (regra ativa)" val={cobAbs} color="var(--green)" />
         <Stat label="Regras criadas" val={db.regras.length} />
@@ -99,29 +99,38 @@ export function DashRegras() {
         <Stat label={"Penetração " + modo} val={pctSel + "%"} color="var(--brand)" sub={modo === "ponderada" ? Math.round(cobPeso) + "/" + pesoTotal + " de peso" : cobAbs + "/" + totalEscopos + " escopos"} />
       </div>
       <div className="card card-pad" style={{ marginTop: 14 }}>
-        <div className="between" style={{ marginBottom: 10 }}>
+        <div className="between" style={{ marginBottom: 14 }}>
           <div className="h2">Penetração (só regras ativas)</div>
           <div className="row" style={{ gap: 4 }}>
             <button className={"btn sm" + (modo === "ponderada" ? " primary" : "")} onClick={() => setModo("ponderada")}>Ponderada</button>
             <button className={"btn sm" + (modo === "absoluta" ? " primary" : "")} onClick={() => setModo("absoluta")}>Absoluta</button>
           </div>
         </div>
-        <div className="bar-row"><div className="bl">Ponderada (peso)</div><div className="bar-track"><div className="bar-fill" style={{ width: pctPnd + "%", background: modo === "ponderada" ? "#4f46e5" : "#c7cad1" }}>{Math.round(cobPeso)}/{pesoTotal} · {pctPnd}%</div></div></div>
-        <div className="bar-row"><div className="bl">Absoluta (contagem)</div><div className="bar-track"><div className="bar-fill" style={{ width: pctAbs + "%", background: modo === "absoluta" ? "#4f46e5" : "#c7cad1" }}>{cobAbs}/{totalEscopos} · {pctAbs}%</div></div></div>
+        <div className="row" style={{ gap: 24, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ minWidth: 110 }}>
+            <div style={{ fontSize: 42, fontWeight: 800, letterSpacing: "-1px", color: "var(--brand)", lineHeight: 1 }}>{pctSel}%</div>
+            <div className="dim" style={{ fontSize: 12, marginTop: 5 }}>penetração {modo}</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 280 }}>
+            <div className="bar-row" style={{ marginBottom: 10 }}><div className="bl">Ponderada (peso)</div><div className="bar-track"><div className="bar-fill" style={{ width: pctPnd + "%", background: modo === "ponderada" ? "#4f46e5" : "#c7cad1", minWidth: 0 }} /></div><div style={{ width: 104, textAlign: "right", fontSize: 12, fontWeight: 600 }}>{Math.round(cobPeso)}/{pesoTotal} · {pctPnd}%</div></div>
+            <div className="bar-row"><div className="bl">Absoluta (contagem)</div><div className="bar-track"><div className="bar-fill" style={{ width: pctAbs + "%", background: modo === "absoluta" ? "#4f46e5" : "#c7cad1", minWidth: 0 }} /></div><div style={{ width: 104, textAlign: "right", fontSize: 12, fontWeight: 600 }}>{cobAbs}/{totalEscopos} · {pctAbs}%</div></div>
+          </div>
+        </div>
       </div>
-      <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", marginTop: 16, alignItems: "start" }}>
+      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", marginTop: 16, alignItems: "start" }}>
         <div className="card card-pad"><div className="h2" style={{ marginBottom: 12 }}>Regras por status</div>
-          {byStatus.map((x) => (<div className="bar-row" key={x.s}><div className="bl">{x.s}</div><div className="bar-track"><div className="bar-fill" style={{ width: (db.regras.length ? (x.n / db.regras.length) * 100 : 0) + "%", background: x.s === "Ativa" ? "#16a34a" : x.s === "Em teste" ? "#d97706" : "#8b8f98" }}>{x.n}</div></div></div>))}
+          {byStatus.map((x) => (<div className="bar-row" key={x.s}><div className="bl">{x.s}</div><div className="bar-track"><div className="bar-fill" style={{ width: (db.regras.length ? (x.n / db.regras.length) * 100 : 0) + "%", background: x.s === "Ativa" ? "#16a34a" : x.s === "Em teste" ? "#d97706" : "#8b8f98", minWidth: 0 }} /></div><div style={{ width: 36, textAlign: "right", fontSize: 12, fontWeight: 700 }}>{x.n}</div></div>))}
+          {!db.regras.length && <div className="dim" style={{ fontSize: 12 }}>Nenhuma regra ainda.</div>}
         </div>
         <div className="card card-pad">
           <div className="between" style={{ marginBottom: 12 }}><div className="h2">Escopos por item da conta</div>
-            <div className="tag-legend"><span><span className="dot" style={{ background: "#16a34a" }} /> Regra ativa</span><span><span className="dot" style={{ background: "#d97706" }} /> Não ativa</span><span><span className="dot" style={{ background: "#8b8f98" }} /> Sem regra</span></div></div>
-          {byItem.length ? byItem.map((x) => (<div className="bar-row" key={x.nome}><div className="bl" title={x.nome} style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.nome}</div>
+            <div className="tag-legend"><span><span className="dot" style={{ background: "#16a34a" }} /> Ativa</span><span><span className="dot" style={{ background: "#d97706" }} /> Não ativa</span><span><span className="dot" style={{ background: "#8b8f98" }} /> Sem regra</span></div></div>
+          <div style={{ maxHeight: 320, overflow: "auto" }}>{byItem.length ? byItem.map((x) => (<div className="bar-row" key={x.nome}><div className="bl" title={x.nome} style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.nome}</div>
             <div className="bar-track" style={{ display: "flex" }}>
-              {x.ativo > 0 && <div className="bar-fill" style={{ width: (x.ativo / byItemMax) * 100 + "%", background: "#16a34a", borderRadius: 0, minWidth: 20 }} title={"Regra ativa: " + x.ativo}>{x.ativo}</div>}
-              {x.parcial > 0 && <div className="bar-fill" style={{ width: (x.parcial / byItemMax) * 100 + "%", background: "#d97706", borderRadius: 0, minWidth: 20 }} title={"Regra não ativa: " + x.parcial}>{x.parcial}</div>}
-              {x.sem > 0 && <div className="bar-fill" style={{ width: (x.sem / byItemMax) * 100 + "%", background: "#8b8f98", borderRadius: 0, minWidth: 20 }} title={"Sem regra: " + x.sem}>{x.sem}</div>}
-            </div></div>)) : <div className="dim">Sem escopos.</div>}
+              {x.ativo > 0 && <div className="bar-fill" style={{ width: (x.ativo / byItemMax) * 100 + "%", background: "#16a34a", borderRadius: 0, minWidth: 18 }} title={"Regra ativa: " + x.ativo}>{x.ativo}</div>}
+              {x.parcial > 0 && <div className="bar-fill" style={{ width: (x.parcial / byItemMax) * 100 + "%", background: "#d97706", borderRadius: 0, minWidth: 18 }} title={"Regra não ativa: " + x.parcial}>{x.parcial}</div>}
+              {x.sem > 0 && <div className="bar-fill" style={{ width: (x.sem / byItemMax) * 100 + "%", background: "#8b8f98", borderRadius: 0, minWidth: 18 }} title={"Sem regra: " + x.sem}>{x.sem}</div>}
+            </div><div style={{ width: 34, textAlign: "right", fontSize: 12, fontWeight: 700 }}>{x.total}</div></div>)) : <div className="dim">Sem escopos.</div>}</div>
         </div>
       </div>
       <div className="card" style={{ marginTop: 16, overflow: "hidden" }}>

@@ -2,14 +2,14 @@ import { useState } from "react";
 import { useStore } from "../store";
 import { deriveTobe, nameById, namesByIds } from "../lib/derive";
 import { STATUS_FUTURO, OWNERS } from "../lib/constants";
-import { Badge, Chips, PastaBar, pastaMatch } from "../ui";
+import { Badge, Chips, FilterMulti, anySel, inSel } from "../ui";
 
 export function ToBe() {
   const { db, upd } = useStore();
   const [pastaH, setPastaH] = useState<string | null>(null);
   const allRows = deriveTobe(db);
   const rows = allRows;
-  const [f, setF] = useState({ operadora: "", atendimento: "", responsavel: "", status: "", owner: "", gap: "" });
+  const [f, setF] = useState<{ operadora: string[]; atendimento: string[]; responsavel: string[]; status: string[]; owner: string[]; gap: string }>({ operadora: [], atendimento: [], responsavel: [], status: [], owner: [], gap: "" });
   const [uowPick, setUowPick] = useState<string | null>(null);
   const [uowPos, setUowPos] = useState<{ top: number; left: number } | null>(null);
   const openUowPick = (e: any, rid: string) => {
@@ -23,9 +23,9 @@ export function ToBe() {
   // Valores vazios/não numéricos vão para o fim.
   const parseOrd = (v?: string) => { const n = parseFloat(String(v ?? "").replace(",", ".")); return isNaN(n) ? Infinity : n; };
   const filtered = rows.filter((r) =>
-    (!f.operadora || r.operadoras.includes(f.operadora)) && (!f.atendimento || r.tiposAtendimento.includes(f.atendimento)) &&
-    (!f.responsavel || r.responsavel === f.responsavel) && (!f.status || r.statusFuturo === f.status) &&
-    (!f.owner || r.owner === f.owner) && (f.gap === "" || (f.gap === "sim" ? r.isGap : !r.isGap)))
+    anySel(f.operadora, r.operadoras) && anySel(f.atendimento, r.tiposAtendimento) &&
+    inSel(f.responsavel, r.responsavel) && inSel(f.status, r.statusFuturo) &&
+    inSel(f.owner, r.owner) && (f.gap === "" || (f.gap === "sim" ? r.isGap : !r.isGap)))
     .sort((a, b) => {
       const pa = parseOrd(a.proc?.ordem), pb = parseOrd(b.proc?.ordem);
       if (pa !== pb) return pa - pb;
@@ -41,11 +41,11 @@ export function ToBe() {
     <div>
       <div className="page-head"><div className="h1">To Be</div><p>Gerado a partir das ações do AS IS. Defina o status futuro, o owner (Rivio ou Hospital) e as Units of Work. Ação marcada como "Executada pelo produto" sem UoW vira Gap automaticamente.</p></div>
       <div className="filters">
-        <select className="select-sm" value={f.operadora} onChange={(e) => setF({ ...f, operadora: e.target.value })}><option value="">Operadora</option>{db.operadoras.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}</select>
-        <select className="select-sm" value={f.atendimento} onChange={(e) => setF({ ...f, atendimento: e.target.value })}><option value="">Atendimento</option>{db.tiposAtendimento.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}</select>
-        <select className="select-sm" value={f.responsavel} onChange={(e) => setF({ ...f, responsavel: e.target.value })}><option value="">Responsável</option>{db.funcionarios.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}</select>
-        <select className="select-sm" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}><option value="">Status futuro</option>{STATUS_FUTURO.map((s) => <option key={s}>{s}</option>)}</select>
-        <select className="select-sm" value={f.owner} onChange={(e) => setF({ ...f, owner: e.target.value })}><option value="">Owner</option>{OWNERS.map((s) => <option key={s}>{s}</option>)}</select>
+        <FilterMulti label="Operadora" options={db.operadoras} value={f.operadora} onChange={(v) => setF({ ...f, operadora: v })} />
+        <FilterMulti label="Atendimento" options={db.tiposAtendimento} value={f.atendimento} onChange={(v) => setF({ ...f, atendimento: v })} />
+        <FilterMulti label="Responsável" options={db.funcionarios} value={f.responsavel} onChange={(v) => setF({ ...f, responsavel: v })} />
+        <FilterMulti label="Status futuro" options={STATUS_FUTURO.map((s) => ({ id: s, nome: s }))} value={f.status} onChange={(v) => setF({ ...f, status: v })} />
+        <FilterMulti label="Owner" options={OWNERS.map((s) => ({ id: s, nome: s }))} value={f.owner} onChange={(v) => setF({ ...f, owner: v })} />
         <select className="select-sm" value={f.gap} onChange={(e) => setF({ ...f, gap: e.target.value })}><option value="">Gap?</option><option value="sim">Só gaps</option><option value="nao">Sem gap</option></select>
         <span className="chip" style={{ marginLeft: "auto" }}>{filtered.length} ações</span>
       </div>

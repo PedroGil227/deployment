@@ -74,6 +74,13 @@ export interface ChecklistAnswer { status: string; comentario: string; editadoPo
 // operadoras vazio = vale para todas as operadoras.
 export interface Escopo { id: string; itemConta: string; nome: string; peso: number; operadoras: string[]; }
 
+// Documento de referência, associável a várias entidades do app.
+export interface Documento {
+  id: string; nome: string; oQueValidar: string;
+  acoes: string[]; itensConta: string[]; regras: string[]; operadoras: string[];
+  pendencias: string[]; uows: string[]; sistemas: string[];
+}
+
 export interface DB {
   operadoras: Named[];
   tiposAtendimento: Named[];
@@ -98,6 +105,9 @@ export interface DB {
   respostas: Record<string, RespostaEntry>;
   pendencias: Pendencia[];
   checklist: Record<string, ChecklistAnswer>;
+  documentos: Documento[];
+  testChecklist: Record<string, ChecklistAnswer>;
+  regraTestes: Record<string, ChecklistAnswer>;
 }
 
 export type DBKey = keyof DB;

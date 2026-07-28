@@ -137,4 +137,7 @@ export const seed: DB = {
   respostas: {},
   pendencias: [],
   checklist: {},
+  documentos: [],
+  testChecklist: {},
+  regraTestes: {},
 };
