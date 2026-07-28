@@ -30,7 +30,7 @@ export interface Problema {
 }
 export interface Regra {
   id: string; nome: string; descricao: string; itensConta: string[];
-  operadoras: string[]; tiposAtendimento: string[]; problemas: string[];
+  operadoras: string[]; tiposAtendimento: string[]; problemas: string[]; escopos: string[];
   status: string; obs: string;
   pastaHospital?: string; pastaOperadora?: string;
 }
@@ -70,6 +70,10 @@ export interface Pendencia {
 // Respostas do Questionário AS IS (checklist embutido). status: "" (vazio) | "check" | "x" (pendência).
 export interface ChecklistAnswer { status: string; comentario: string; editadoPor: string; editadoEm: string; }
 
+// Escopo genérico de regra, agrupado por item da conta. peso: 0..infinito (default 1);
+// operadoras vazio = vale para todas as operadoras.
+export interface Escopo { id: string; itemConta: string; nome: string; peso: number; operadoras: string[]; }
+
 export interface DB {
   operadoras: Named[];
   tiposAtendimento: Named[];
@@ -87,6 +91,7 @@ export interface DB {
   tobe: Record<string, TobeEntry>;
   problemas: Problema[];
   regras: Regra[];
+  escopos: Escopo[];
   gapsManuais: GapManual[];
   testes: Teste[];
   perguntas: Pergunta[];

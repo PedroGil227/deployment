@@ -130,6 +130,7 @@ export const seed: DB = {
   tobe: {},
   problemas: [],
   regras: [],
+  escopos: [],
   gapsManuais: [],
   testes: [],
   perguntas: [],

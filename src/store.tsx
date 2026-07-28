@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { ref, onValue, set } from "firebase/database";
 import { db as rtdb } from "./firebase";
 import { seed } from "./data/seed";
+import { buildEscoposSeed } from "./data/escopos";
 import type { DB } from "./types";
 
 const DB_PATH = "frame";
@@ -15,7 +16,7 @@ const toRec = (v: any) => (v && typeof v === "object" && !Array.isArray(v) ? v :
 const sanitizeAcao = (a: any) => ({ operadoras: [], tiposAtendimento: [], itemConta: "", tipoConta: "", ...a });
 const sanitizeProcesso = (p: any) => ({ operadoras: [], tiposAtendimento: [], ...p });
 const sanitizeProblema = (pb: any) => ({ operadoras: [], itensConta: [], tiposAtendimento: [], ...pb });
-const sanitizeRegra = (r: any) => ({ itensConta: [], operadoras: [], tiposAtendimento: [], problemas: [], ...r });
+const sanitizeRegra = (r: any) => ({ itensConta: [], operadoras: [], tiposAtendimento: [], problemas: [], escopos: [], ...r });
 // O Firebase Realtime Database não guarda arrays vazios (ex.: uows: []) — ele simplesmente
 // remove o campo ao salvar. Sem essa sanitização, a próxima leitura vinha sem "uows" e
 // qualquer código que fizesse t.uows.includes(...) quebrava o app inteiro (tela branca).
@@ -37,6 +38,7 @@ function normalize(val: any): DB {
     perguntas: toArr(val?.perguntas), respostas: toRec(val?.respostas),
     pendencias: toArr(val?.pendencias),
     checklist: toRec(val?.checklist),
+    escopos: toArr(val?.escopos),
   };
 }
 
@@ -51,8 +53,13 @@ export function StoreProvider({ children }: { children: any }) {
     const r = ref(rtdb, DB_PATH);
     const unsub = onValue(r, (snap) => {
       const val = snap.val();
-      if (!val) { set(r, seed); setDb(seed); }
-      else setDb(normalize(val));
+      if (!val) { set(r, seed); setDb(seed); return; }
+      // Migração única: injeta a base de escopos se o banco ainda não tiver o campo.
+      if (!val.escopos) {
+        const migrated: DB = { ...normalize(val), escopos: buildEscoposSeed(toArr(val.itensConta)) };
+        set(r, migrated); setDb(migrated); return;
+      }
+      setDb(normalize(val));
     });
     return () => unsub();
   }, []);
