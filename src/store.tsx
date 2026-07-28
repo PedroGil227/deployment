@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { ref, onValue, set } from "firebase/database";
 import { db as rtdb } from "./firebase";
 import { seed } from "./data/seed";
-import { buildEscoposSeed } from "./data/escopos";
+import { buildEscoposSeed, relinkEscopos } from "./data/escopos";
 import type { DB } from "./types";
 
 const DB_PATH = "frame";
@@ -59,7 +59,11 @@ export function StoreProvider({ children }: { children: any }) {
         const migrated: DB = { ...normalize(val), escopos: buildEscoposSeed(toArr(val.itensConta)) };
         set(r, migrated); setDb(migrated); return;
       }
-      setDb(normalize(val));
+      const norm = normalize(val);
+      // Re-vincula escopos da base a itens da conta criados/renomeados depois da 1ª migração.
+      const rel = relinkEscopos(norm.escopos, norm.itensConta);
+      if (rel.changed) { const fixed: DB = { ...norm, escopos: rel.escopos }; set(r, fixed); setDb(fixed); return; }
+      setDb(norm);
     });
     return () => unsub();
   }, []);

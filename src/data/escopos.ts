@@ -128,13 +128,39 @@ export const ESCOPOS_BASE: { item: string; nome: string }[] = [
   { item: "Administrativo / Faturamento", nome: "Valor fora do contratado / sem negociação" },
 ];
 
-const norm = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").trim();
+// slug tolerante a acento, pontuação e plural — assim "Honorário Médico" casa com
+// "Honorários Médicos", "Exames / SADT" com "Exames SADT", etc.
+const slug = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "")
+  .split(/[^a-z0-9]+/).filter(Boolean).map((w) => w.replace(/s$/, "")).join(" ");
+
+const findItemId = (itens: Named[], nomeItem: string): string => {
+  const t = slug(nomeItem);
+  const it = itens.find((x) => slug(x.nome) === t);
+  return it ? it.id : "";
+};
+
+export const baseEscopoId = (i: number) => "esc-" + String(i + 1).padStart(3, "0");
 
 // Constrói os escopos iniciais resolvendo o item da conta pelo nome (contra o cadastro do banco).
 // peso inicial = 1; operadoras vazio = vale para todas.
 export function buildEscoposSeed(itens: Named[]): Escopo[] {
-  return ESCOPOS_BASE.map((e, i) => {
-    const it = itens.find((x) => norm(x.nome) === norm(e.item));
-    return { id: "esc-" + String(i + 1).padStart(3, "0"), itemConta: it ? it.id : "", nome: e.nome, peso: 1, operadoras: [] };
+  return ESCOPOS_BASE.map((e, i) => ({ id: baseEscopoId(i), itemConta: findItemId(itens, e.item), nome: e.nome, peso: 1, operadoras: [] }));
+}
+
+// Re-vincula escopos da base cujo item ficou sem correspondência (item criado/renomeado depois
+// da 1ª migração). Só toca em escopos da base (id "esc-NNN") com itemConta vazio ou inválido.
+export function relinkEscopos(escopos: Escopo[], itens: Named[]): { changed: boolean; escopos: Escopo[] } {
+  const itemIds = new Set(itens.map((i) => i.id));
+  const baseItemById: Record<string, string> = {};
+  ESCOPOS_BASE.forEach((e, i) => { baseItemById[baseEscopoId(i)] = e.item; });
+  let changed = false;
+  const out = escopos.map((e) => {
+    const baseItem = baseItemById[e.id];
+    if (baseItem && (!e.itemConta || !itemIds.has(e.itemConta))) {
+      const id = findItemId(itens, baseItem);
+      if (id && id !== e.itemConta) { changed = true; return { ...e, itemConta: id }; }
+    }
+    return e;
   });
+  return { changed, escopos: out };
 }

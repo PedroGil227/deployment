@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useStore } from "../store";
 import { deriveTobe, deriveGaps, nameById } from "../lib/derive";
 import { PRIORIDADES, REGRA_STATUS, STATUS_WEIGHT, regraStatusClass } from "../lib/constants";
@@ -62,64 +63,77 @@ export function DashProcesso({ go }: { go: (v: string) => void }) {
 
 export function DashRegras() {
   const { db } = useStore();
+  const [modo, setModo] = useState<"ponderada" | "absoluta">("ponderada");
   const escopos = db.escopos;
   const pesoTotal = escopos.reduce((s, e) => s + (e.peso || 0), 0);
   const rulesFor = (eid: string) => db.regras.filter((r) => (r.escopos || []).includes(eid));
-  let cobVinculo = 0, cobEfetiva = 0;
   const lista = escopos.map((e) => {
     const rs = rulesFor(e.id);
-    const bestW = rs.length ? Math.max(...rs.map((r) => STATUS_WEIGHT[r.status] || 0)) : 0;
-    if (rs.length) cobVinculo += e.peso || 0;
-    cobEfetiva += (e.peso || 0) * bestW;
-    return { ...e, rules: rs, bestW };
+    const coberto = rs.some((r) => r.status === "Ativa");
+    return { ...e, rules: rs, coberto };
   });
-  const pctVinc = pesoTotal ? Math.round((cobVinculo / pesoTotal) * 100) : 0;
-  const pctEf = pesoTotal ? Math.round((cobEfetiva / pesoTotal) * 100) : 0;
   const totalEscopos = escopos.length;
-  const comRegra = lista.filter((e) => e.rules.length > 0).length;
+  const cobAbs = lista.filter((e) => e.coberto).length;
+  const cobPeso = lista.filter((e) => e.coberto).reduce((s, e) => s + (e.peso || 0), 0);
+  const pctPnd = pesoTotal ? Math.round((cobPeso / pesoTotal) * 100) : 0;
+  const pctAbs = totalEscopos ? Math.round((cobAbs / totalEscopos) * 100) : 0;
+  const pctSel = modo === "ponderada" ? pctPnd : pctAbs;
   const byStatus = REGRA_STATUS.map((s) => ({ s, n: db.regras.filter((r) => r.status === s).length }));
   const byItem = db.itensConta.map((i) => {
-    const es = escopos.filter((e) => e.itemConta === i.id);
-    const cob = es.filter((e) => rulesFor(e.id).length > 0).length;
-    return { nome: i.nome, total: es.length, cob };
+    const es = lista.filter((e) => e.itemConta === i.id);
+    const ativo = es.filter((e) => e.coberto).length;
+    const parcial = es.filter((e) => !e.coberto && e.rules.length > 0).length;
+    const sem = es.filter((e) => e.rules.length === 0).length;
+    return { nome: i.nome, total: es.length, ativo, parcial, sem };
   }).filter((x) => x.total > 0);
+  const byItemMax = Math.max(1, ...byItem.map((x) => x.total));
 
   return (
     <div>
-      <div className="page-head"><div className="h1">Dashboard · Regras</div><p>Penetração das regras sobre os escopos (dores/motivos genéricos por item da conta), ponderada pelo peso de cada escopo. A penetração efetiva também pondera pelo status da regra — só conta 100% quando a regra está Ativa (testada).</p></div>
+      <div className="page-head"><div className="h1">Dashboard · Regras</div><p>Penetração das regras sobre os escopos. Um escopo é considerado <b>coberto</b> quando tem ao menos uma regra <b>Ativa</b>. Alterne entre a penetração <b>absoluta</b> (contagem de escopos) e a <b>ponderada</b> (pelo peso de cada escopo).</p></div>
       <div className="grid" style={{ gridTemplateColumns: "repeat(5,1fr)" }}>
         <Stat label="Escopos" val={totalEscopos} />
-        <Stat label="Com regra" val={comRegra} color="var(--green)" />
+        <Stat label="Cobertos (regra ativa)" val={cobAbs} color="var(--green)" />
         <Stat label="Regras criadas" val={db.regras.length} />
         <Stat label="Peso total" val={pesoTotal} sub="soma dos pesos" />
-        <Stat label="Penetração ponderada" val={pctEf + "%"} color="var(--brand)" sub={Math.round(cobEfetiva) + "/" + pesoTotal + " de peso"} />
+        <Stat label={"Penetração " + modo} val={pctSel + "%"} color="var(--brand)" sub={modo === "ponderada" ? Math.round(cobPeso) + "/" + pesoTotal + " de peso" : cobAbs + "/" + totalEscopos + " escopos"} />
       </div>
       <div className="card card-pad" style={{ marginTop: 14 }}>
-        <div className="h2" style={{ marginBottom: 10 }}>Penetração ponderada (por peso)</div>
-        <div className="bar-row"><div className="bl">Por vínculo</div><div className="bar-track"><div className="bar-fill" style={{ width: pctVinc + "%", background: "#2563eb" }}>{cobVinculo}/{pesoTotal} · {pctVinc}%</div></div></div>
-        <div className="bar-row"><div className="bl">Efetiva (status)</div><div className="bar-track"><div className="bar-fill" style={{ width: pctEf + "%", background: "#16a34a" }}>{Math.round(cobEfetiva)}/{pesoTotal} · {pctEf}%</div></div></div>
-        <div className="dim" style={{ fontSize: 11.5, marginTop: 4 }}>Peso por status: Ativa = 100% · Em teste = 50% · Inativa = 0%.</div>
+        <div className="between" style={{ marginBottom: 10 }}>
+          <div className="h2">Penetração (só regras ativas)</div>
+          <div className="row" style={{ gap: 4 }}>
+            <button className={"btn sm" + (modo === "ponderada" ? " primary" : "")} onClick={() => setModo("ponderada")}>Ponderada</button>
+            <button className={"btn sm" + (modo === "absoluta" ? " primary" : "")} onClick={() => setModo("absoluta")}>Absoluta</button>
+          </div>
+        </div>
+        <div className="bar-row"><div className="bl">Ponderada (peso)</div><div className="bar-track"><div className="bar-fill" style={{ width: pctPnd + "%", background: modo === "ponderada" ? "#4f46e5" : "#c7cad1" }}>{Math.round(cobPeso)}/{pesoTotal} · {pctPnd}%</div></div></div>
+        <div className="bar-row"><div className="bl">Absoluta (contagem)</div><div className="bar-track"><div className="bar-fill" style={{ width: pctAbs + "%", background: modo === "absoluta" ? "#4f46e5" : "#c7cad1" }}>{cobAbs}/{totalEscopos} · {pctAbs}%</div></div></div>
       </div>
       <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", marginTop: 16, alignItems: "start" }}>
         <div className="card card-pad"><div className="h2" style={{ marginBottom: 12 }}>Regras por status</div>
           {byStatus.map((x) => (<div className="bar-row" key={x.s}><div className="bl">{x.s}</div><div className="bar-track"><div className="bar-fill" style={{ width: (db.regras.length ? (x.n / db.regras.length) * 100 : 0) + "%", background: x.s === "Ativa" ? "#16a34a" : x.s === "Em teste" ? "#d97706" : "#8b8f98" }}>{x.n}</div></div></div>))}
         </div>
         <div className="card card-pad">
-          <div className="h2" style={{ marginBottom: 12 }}>Escopos cobertos por item da conta</div>
+          <div className="between" style={{ marginBottom: 12 }}><div className="h2">Escopos por item da conta</div>
+            <div className="tag-legend"><span><span className="dot" style={{ background: "#16a34a" }} /> Regra ativa</span><span><span className="dot" style={{ background: "#d97706" }} /> Não ativa</span><span><span className="dot" style={{ background: "#8b8f98" }} /> Sem regra</span></div></div>
           {byItem.length ? byItem.map((x) => (<div className="bar-row" key={x.nome}><div className="bl" title={x.nome} style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.nome}</div>
-            <div className="bar-track"><div className="bar-fill" style={{ width: (x.total ? (x.cob / x.total) * 100 : 0) + "%", background: "#16a34a" }}>{x.cob}/{x.total}</div></div></div>)) : <div className="dim">Sem escopos.</div>}
+            <div className="bar-track" style={{ display: "flex" }}>
+              {x.ativo > 0 && <div className="bar-fill" style={{ width: (x.ativo / byItemMax) * 100 + "%", background: "#16a34a", borderRadius: 0, minWidth: 20 }} title={"Regra ativa: " + x.ativo}>{x.ativo}</div>}
+              {x.parcial > 0 && <div className="bar-fill" style={{ width: (x.parcial / byItemMax) * 100 + "%", background: "#d97706", borderRadius: 0, minWidth: 20 }} title={"Regra não ativa: " + x.parcial}>{x.parcial}</div>}
+              {x.sem > 0 && <div className="bar-fill" style={{ width: (x.sem / byItemMax) * 100 + "%", background: "#8b8f98", borderRadius: 0, minWidth: 20 }} title={"Sem regra: " + x.sem}>{x.sem}</div>}
+            </div></div>)) : <div className="dim">Sem escopos.</div>}
         </div>
       </div>
       <div className="card" style={{ marginTop: 16, overflow: "hidden" }}>
         <div className="rel-col-h">Escopos e regra de cobertura</div>
-        <div className="tbl-scroll" style={{ maxHeight: 420 }}><table><thead><tr><th>Escopo</th><th>Item da conta</th><th>Peso</th><th>Regra que cobre</th><th>Status regra</th><th>Penetração</th></tr></thead>
+        <div className="tbl-scroll" style={{ maxHeight: 420 }}><table><thead><tr><th>Escopo</th><th>Item da conta</th><th>Peso</th><th>Regra que cobre</th><th>Status regra</th><th>Cobertura</th></tr></thead>
           <tbody>{lista.map((e) => (<tr key={e.id}>
             <td style={{ fontWeight: 600, minWidth: 200 }}>{e.nome}</td>
             <td className="muted">{nameById(db.itensConta, e.itemConta)}</td>
             <td>{e.peso}</td>
             <td>{e.rules.length ? <Chips items={e.rules.map((r) => r.nome)} /> : <span className="badge b-red">Sem regra</span>}</td>
             <td>{e.rules.length ? <div className="chips">{e.rules.map((r) => <StatusBadge key={r.id} s={r.status} fn={regraStatusClass} />)}</div> : "—"}</td>
-            <td><Badge cls={e.bestW === 1 ? "b-green" : e.bestW > 0 ? "b-amber" : "b-red"}>{Math.round(e.bestW * 100)}%</Badge></td>
+            <td>{e.coberto ? <Badge cls="b-green">Coberto</Badge> : e.rules.length ? <Badge cls="b-amber">Regra não ativa</Badge> : <Badge cls="b-red">Sem regra</Badge>}</td>
           </tr>))}
           {!lista.length && <tr><td colSpan={6}><div className="empty">Nenhum escopo.</div></td></tr>}</tbody>
         </table></div>
