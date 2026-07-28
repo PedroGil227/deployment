@@ -44,6 +44,7 @@ function normalize(val: any): DB {
     regraTestes: toRec(val?.regraTestes),
     checklistExtra: toArr(val?.checklistExtra),
     testExtra: toArr(val?.testExtra),
+    inconsistencias: toArr(val?.inconsistencias),
   };
 }
 

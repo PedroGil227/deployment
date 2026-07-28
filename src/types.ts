@@ -78,6 +78,9 @@ export interface TestItemCustom { id: string; tipo: string; secao: string; pergu
 // operadoras vazio = vale para todas as operadoras.
 export interface Escopo { id: string; itemConta: string; nome: string; peso: number; operadoras: string[]; }
 
+// Inconsistência registrada durante a implantação. status: "Pendente" | "Resolvido".
+export interface Inconsistencia { id: string; nome: string; descricao: string; planoAcao: string; status: string; }
+
 // Documento de referência, associável a várias entidades do app.
 export interface Documento {
   id: string; nome: string; oQueValidar: string;
@@ -114,6 +117,7 @@ export interface DB {
   regraTestes: Record<string, ChecklistAnswer>;
   checklistExtra: ChecklistItemCustom[];
   testExtra: TestItemCustom[];
+  inconsistencias: Inconsistencia[];
 }
 
 export type DBKey = keyof DB;

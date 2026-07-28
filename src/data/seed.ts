@@ -142,4 +142,5 @@ export const seed: DB = {
   regraTestes: {},
   checklistExtra: [],
   testExtra: [],
+  inconsistencias: [],
 };

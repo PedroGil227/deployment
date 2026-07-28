@@ -13,6 +13,7 @@ import { CoverageExplorer } from "./views/Coverage";
 import { UoWView } from "./views/UoW";
 import { Regras } from "./views/Regras";
 import { Documentos } from "./views/Documentos";
+import { Inconsistencias } from "./views/Inconsistencias";
 import { Testes } from "./views/Testes";
 import { Cadastros } from "./views/Cadastros";
 import { QuestionarioASIS } from "./views/QuestionarioASIS";
@@ -22,7 +23,7 @@ import { CHECKLIST } from "./data/checklist";
 const NAV = [
   { group: "Dashboards", items: [{ k: "dashProc", label: "Dashboard Processo", icon: "dash" }, { k: "dashReg", label: "Dashboard Regras", icon: "dashR" }, { k: "dashTst", label: "Dashboard Testes", icon: "tests" }] },
   { group: "Diagnóstico", items: [{ k: "qasis", label: "Questionário AS IS", icon: "qasis" }, { k: "flow", label: "AS IS · Fluxo", icon: "flow" }, { k: "tobe", label: "To Be", icon: "tobe" }, { k: "change", label: "Change Management", icon: "change" }, { k: "explorer", label: "Coverage Explorer", icon: "explorer" }] },
-  { group: "Produto & Regras", items: [{ k: "regras", label: "Regras", icon: "rules" }, { k: "pendencias", label: "Pendências", icon: "pend" }, { k: "testes", label: "Testes", icon: "tests" }, { k: "documentos", label: "Documentos", icon: "doc" }] },
+  { group: "Produto & Regras", items: [{ k: "regras", label: "Regras", icon: "rules" }, { k: "pendencias", label: "Pendências", icon: "pend" }, { k: "testes", label: "Testes", icon: "tests" }, { k: "documentos", label: "Documentos", icon: "doc" }, { k: "inconsistencias", label: "Inconsistências", icon: "gaps" }] },
   { group: "Base", items: [{ k: "uow", label: "Units of Work", icon: "uow" }, { k: "cadastros", label: "Cadastros", icon: "cad" }] },
 ];
 const TITLES: Record<string, [string, string]> = {
@@ -30,7 +31,7 @@ const TITLES: Record<string, [string, string]> = {
   qasis: ["Questionário AS IS", "Guia de discovery do ciclo de receita"],
   flow: ["AS IS", "Mapeamento do processo atual"],
   tobe: ["To Be", "Estado futuro por ação"], change: ["Change Management", "Plano de transição"], explorer: ["Coverage Explorer", "Inteligência operacional"],
-  uow: ["Units of Work", "Base RCM 2.0"], regras: ["Regras", "Escopos e regras"], pendencias: ["Pendências", "Gestão do Tasy por operadora"], documentos: ["Documentos", "Referências e o que validar"],
+  uow: ["Units of Work", "Base RCM 2.0"], regras: ["Regras", "Escopos e regras"], pendencias: ["Pendências", "Gestão do Tasy por operadora"], documentos: ["Documentos", "Referências e o que validar"], inconsistencias: ["Inconsistências", "Registro e plano de ação"],
   testes: ["Testes", "Validação de regras e features"], cadastros: ["Cadastros", "Entidades base"],
 };
 
@@ -57,7 +58,7 @@ function Shell() {
   const restoreRef = useRef<HTMLInputElement>(null);
   const results = useMemo(() => globalSearch(db, q), [db, q]);
   const go = (v: string) => { setView(v); setQ(""); setShowSr(false); };
-  const counts: Record<string, number> = { qasis: CHECKLIST.length, flow: db.processos.length, tobe: db.acoes.length, uow: db.unitsOfWork.length, regras: db.regras.length, pendencias: db.pendencias.length, documentos: db.documentos.length };
+  const counts: Record<string, number> = { qasis: CHECKLIST.length, flow: db.processos.length, tobe: db.acoes.length, uow: db.unitsOfWork.length, regras: db.regras.length, pendencias: db.pendencias.length, documentos: db.documentos.length, inconsistencias: db.inconsistencias.length };
 
   // Backup local: baixa TODO o conteúdo atual do app (já lido via Firebase) direto do
   // navegador, num arquivo .json — sem precisar de nenhum acesso ao Console do Firebase.
@@ -118,6 +119,7 @@ function Shell() {
           {view === "pendencias" && <Pendencias />}
           {view === "testes" && <Testes />}
           {view === "documentos" && <Documentos />}
+          {view === "inconsistencias" && <Inconsistencias />}
           {view === "cadastros" && <Cadastros />}
         </div>
       </div>
