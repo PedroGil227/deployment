@@ -2,6 +2,8 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { useStore } from "../store";
 import { useAuth } from "../auth";
 import { CHECKLIST, CHECKLIST_AREAS } from "../data/checklist";
+import { uid } from "../lib/derive";
+import { Modal, Field, Ic, icons } from "../ui";
 import type { DB, ChecklistAnswer } from "../types";
 
 const EMPTY: ChecklistAnswer = { status: "", comentario: "", editadoPor: "", editadoEm: "" };
@@ -15,7 +17,6 @@ const boxStyle = (st: string): CSSProperties => ({
   color: st === "check" ? "#15803d" : st === "x" ? "#b91c1c" : "var(--text-3)",
 });
 
-// Comentário com estado local — só grava no Firebase ao sair do campo (evita escrever a cada tecla).
 function ComentarioInput({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
   const [v, setV] = useState(value);
   useEffect(() => setV(value), [value]);
@@ -27,9 +28,21 @@ function ComentarioInput({ value, onCommit }: { value: string; onCommit: (v: str
   );
 }
 
+function AddItemModal({ onClose, onSave }: { onClose: () => void; onSave: (area: string, pergunta: string) => void }) {
+  const [area, setArea] = useState(CHECKLIST_AREAS[0]);
+  const [pergunta, setPergunta] = useState("");
+  return (
+    <Modal title="Nova pergunta do checklist" onClose={onClose} onSave={() => { if (pergunta.trim()) onSave(area, pergunta.trim()); }}>
+      <Field label="Área"><select value={area} onChange={(e) => setArea(e.target.value)}>{CHECKLIST_AREAS.map((a) => <option key={a}>{a}</option>)}</select></Field>
+      <Field label="Pergunta"><textarea rows={3} value={pergunta} onChange={(e) => setPergunta(e.target.value)} /></Field>
+    </Modal>
+  );
+}
+
 export function QuestionarioASIS() {
   const { db, upd } = useStore();
   const { user } = useAuth();
+  const [add, setAdd] = useState(false);
   const ans = (id: string): ChecklistAnswer => (db.checklist && db.checklist[id]) || EMPTY;
   const stamp = () => ({ editadoPor: user?.email || "—", editadoEm: new Date().toISOString().slice(0, 10) });
 
@@ -43,30 +56,38 @@ export function QuestionarioASIS() {
     cur.comentario = val; Object.assign(cur, stamp());
     d.checklist[id] = cur;
   });
+  const addItem = (area: string, pergunta: string) => { upd((d: DB) => { d.checklistExtra.push({ id: uid("chk"), area, pergunta }); }); setAdd(false); };
+  const delItem = (id: string) => { if (!confirm("Excluir esta pergunta?")) return; upd((d: DB) => { d.checklistExtra = d.checklistExtra.filter((x) => x.id !== id); delete d.checklist[id]; }); };
 
-  const total = CHECKLIST.length;
-  const checked = CHECKLIST.filter((q) => ans(q.id).status === "check").length;
-  const pend = CHECKLIST.filter((q) => ans(q.id).status === "x").length;
+  // Base embutida + itens adicionados pelo usuário.
+  const all = [
+    ...CHECKLIST.map((q) => ({ id: q.id, area: q.area, pergunta: q.pergunta, custom: false })),
+    ...(db.checklistExtra || []).map((e) => ({ id: e.id, area: e.area, pergunta: e.pergunta, custom: true })),
+  ];
+  const total = all.length;
+  const checked = all.filter((q) => ans(q.id).status === "check").length;
+  const pend = all.filter((q) => ans(q.id).status === "x").length;
   const pct = total ? Math.round((checked / total) * 100) : 0;
 
   return (
     <div>
       <div className="page-head">
         <div className="h1">Questionário AS IS</div>
-        <p>Guia de discovery do AS IS do hospital nas áreas do ciclo de receita (recepção, auditoria, autorização, faturamento, conciliação e glosa). Clique na caixa para alternar entre <b>vazio</b> → <b>✓ resolvido</b> → <b>✕ pendência</b>. Registre observações no comentário; à esquerda fica quem fez a última edição.</p>
+        <p>Guia de discovery do AS IS do hospital nas áreas do ciclo de receita. Clique na caixa para alternar entre <b>vazio</b> → <b>✓ resolvido</b> → <b>✕ pendência</b>. Registre observações no comentário; à esquerda fica quem fez a última edição.</p>
       </div>
 
       <div className="row" style={{ gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
         <span className="badge b-green">✓ {checked} resolvidas</span>
         <span className="badge b-red">✕ {pend} pendências</span>
         <span className="chip">{checked}/{total} com check · {pct}%</span>
-        <div className="bar-track" style={{ flex: 1, minWidth: 160, maxWidth: 320 }}>
+        <div className="bar-track" style={{ flex: 1, minWidth: 140, maxWidth: 280 }}>
           <div className="bar-fill" style={{ width: pct + "%", background: "#16a34a" }} />
         </div>
+        <button className="btn primary sm" onClick={() => setAdd(true)}><Ic d={icons.plus} size={13} />Adicionar pergunta</button>
       </div>
 
       {CHECKLIST_AREAS.map((area) => {
-        const items = CHECKLIST.filter((q) => q.area === area);
+        const items = all.filter((q) => q.area === area);
         if (!items.length) return null;
         const c = items.filter((q) => ans(q.id).status === "check").length;
         const p = items.filter((q) => ans(q.id).status === "x").length;
@@ -94,7 +115,7 @@ export function QuestionarioASIS() {
                       {a.editadoPor ? (<>{a.editadoPor}{a.editadoEm && <div style={{ opacity: 0.7 }}>{a.editadoEm}</div>}</>) : "—"}
                     </td>
                     <td><button style={boxStyle(a.status)} onClick={() => cycle(q.id)} title="Clique: vazio → ✓ resolvido → ✕ pendência">{a.status === "check" ? "✓" : a.status === "x" ? "✕" : ""}</button></td>
-                    <td style={{ minWidth: 300 }}>{q.pergunta}</td>
+                    <td style={{ minWidth: 300 }}>{q.pergunta}{q.custom && <button className="btn ghost sm danger" style={{ marginLeft: 6, padding: "0 6px" }} title="Excluir pergunta" onClick={() => delItem(q.id)}>×</button>}</td>
                     <td><ComentarioInput value={a.comentario} onCommit={(v) => setComentario(q.id, v)} /></td>
                   </tr>
                 );
@@ -103,6 +124,8 @@ export function QuestionarioASIS() {
           </div>
         );
       })}
+
+      {add && <AddItemModal onClose={() => setAdd(false)} onSave={addItem} />}
     </div>
   );
 }

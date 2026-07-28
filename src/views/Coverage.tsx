@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "../store";
-import { deriveTobe, deriveGaps, nameById } from "../lib/derive";
+import { deriveTobe, deriveGaps, nameById, namesByIds } from "../lib/derive";
 
 export function CoverageExplorer() {
   const { db } = useStore();
@@ -10,6 +10,8 @@ export function CoverageExplorer() {
     { k: "operadora", label: "Operadora", list: db.operadoras },
     { k: "processo", label: "Processo", list: db.processos },
     { k: "sistema", label: "Sistema", list: db.sistemas },
+    { k: "documento", label: "Documento", list: db.documentos as any },
+    { k: "pendencia", label: "Pendência", list: db.pendencias as any },
   ];
   const [kind, setKind] = useState("uow");
   const first = (kinds.find((x) => x.k === "uow")!.list[0] || {}).id || "";
@@ -18,6 +20,7 @@ export function CoverageExplorer() {
   const rows = deriveTobe(db);
   const gaps = deriveGaps(db);
   const actItem = (a: any) => ({ label: a.nome, tag: nameById(db.sistemas, a.sistema) });
+  const docsFor = (field: string, id: string) => db.documentos.filter((d: any) => (d[field] || []).includes(id)).map((d) => d.nome);
 
   const relFor = (): any[] => {
     if (kind === "itemConta") {
@@ -33,6 +36,7 @@ export function CoverageExplorer() {
         { t: "Ações", items: acoes.map(actItem) },
         { t: "Units of Work que cobrem", items: uows.map((id) => nameById(db.unitsOfWork, id)), green: true },
         { t: "Regras existentes", items: regras.map((r) => r.nome) },
+        { t: "Documentos", items: docsFor("itensConta", sel) },
         { t: "Gaps", items: gp.map((g) => g.tipo), red: true },
       ];
     }
@@ -45,6 +49,7 @@ export function CoverageExplorer() {
         { t: "Etapa RCM", items: [u.etapa] },
         { t: "Cobertura / automação", items: [u.cobertura + " · " + Math.round((u.automacao || 0) * 100) + "% autom."] },
         { t: "Modo / plataforma", items: [u.modo + " · " + u.plataforma] },
+        { t: "Documentos", items: docsFor("uows", sel) },
       ];
     }
     if (kind === "operadora") {
@@ -58,6 +63,8 @@ export function CoverageExplorer() {
         { t: "Ações", items: acoes.map(actItem) },
         { t: "Problemas / dores", items: probs.map((p) => p.nome) },
         { t: "Regras", items: regras.map((r) => r.nome), green: true },
+        { t: "Pendências", items: db.pendencias.filter((p) => (p.operadorasAplicaveis || []).includes(sel)).map((p) => p.nome) },
+        { t: "Documentos", items: docsFor("operadoras", sel) },
         { t: "Gaps", items: gp.map((g) => g.tipo), red: true },
       ];
     }
@@ -70,6 +77,7 @@ export function CoverageExplorer() {
         { t: "Units of Work", items: uows.map((id) => nameById(db.unitsOfWork, id)), green: true },
         { t: "Ações cobertas", items: acoes.filter((a) => a.cobre).map(actItem), green: true },
         { t: "Gaps neste processo", items: gp.map((a) => a.nome), red: true },
+        { t: "Documentos", items: db.documentos.filter((d) => (d.acoes || []).some((id) => acoes.some((a) => a.id === id))).map((d) => d.nome) },
       ];
     }
     if (kind === "sistema") {
@@ -80,6 +88,32 @@ export function CoverageExplorer() {
         { t: "Ações neste sistema", items: acoes.map(actItem) },
         { t: "Processos neste sistema", items: procIds.map((id) => nameById(db.processos, id)) },
         { t: "Itens da conta tratados", items: itens.map((id) => nameById(db.itensConta, id)) },
+        { t: "Documentos", items: docsFor("sistemas", sel) },
+      ];
+    }
+    if (kind === "documento") {
+      const d: any = db.documentos.find((x) => x.id === sel) || {};
+      return [
+        { t: "O que validar", items: d.oQueValidar ? [d.oQueValidar] : [] },
+        { t: "Ações", items: namesByIds(db.acoes as any, d.acoes || []) },
+        { t: "Itens da conta", items: namesByIds(db.itensConta, d.itensConta || []) },
+        { t: "Regras", items: namesByIds(db.regras as any, d.regras || []), green: true },
+        { t: "Operadoras", items: namesByIds(db.operadoras, d.operadoras || []) },
+        { t: "Pendências", items: namesByIds(db.pendencias as any, d.pendencias || []) },
+        { t: "Units of Work", items: namesByIds(db.unitsOfWork as any, d.uows || []) },
+        { t: "Sistemas", items: namesByIds(db.sistemas, d.sistemas || []) },
+      ];
+    }
+    if (kind === "pendencia") {
+      const p: any = db.pendencias.find((x) => x.id === sel) || {};
+      return [
+        { t: "Descrição", items: p.descricao ? [p.descricao] : [] },
+        { t: "Operadoras", items: namesByIds(db.operadoras, p.operadorasAplicaveis || []) },
+        { t: "Setor", items: p.setor ? [nameById(db.setores, p.setor)] : [] },
+        { t: "Responsável", items: p.responsavel ? [p.responsavel] : [] },
+        { t: "Regras vinculadas", items: namesByIds(db.regras as any, p.regras || []), green: true },
+        { t: "Documentos", items: docsFor("pendencias", sel) },
+        { t: "Status / alerta", items: [(p.status || "—") + (p.alertaEmail ? " · alerta e-mail" : "")] },
       ];
     }
     return [];

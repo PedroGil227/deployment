@@ -70,6 +70,10 @@ export interface Pendencia {
 // Respostas do Questionário AS IS (checklist embutido). status: "" (vazio) | "check" | "x" (pendência).
 export interface ChecklistAnswer { status: string; comentario: string; editadoPor: string; editadoEm: string; }
 
+// Itens de checklist adicionados pelo usuário (a base embutida continua fixa no código).
+export interface ChecklistItemCustom { id: string; area: string; pergunta: string; }
+export interface TestItemCustom { id: string; tipo: string; secao: string; pergunta: string; }
+
 // Escopo genérico de regra, agrupado por item da conta. peso: 0..infinito (default 1);
 // operadoras vazio = vale para todas as operadoras.
 export interface Escopo { id: string; itemConta: string; nome: string; peso: number; operadoras: string[]; }
@@ -108,6 +112,8 @@ export interface DB {
   documentos: Documento[];
   testChecklist: Record<string, ChecklistAnswer>;
   regraTestes: Record<string, ChecklistAnswer>;
+  checklistExtra: ChecklistItemCustom[];
+  testExtra: TestItemCustom[];
 }
 
 export type DBKey = keyof DB;

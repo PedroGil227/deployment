@@ -5,6 +5,7 @@ import { Ic, icons } from "./ui";
 import { deriveGaps } from "./lib/derive";
 import type { DB } from "./types";
 import { DashProcesso, DashRegras } from "./views/Dashboards";
+import { DashTestes } from "./views/DashTestes";
 import { FlowBuilder } from "./views/Flow";
 import { ToBe } from "./views/ToBe";
 import { ChangeMgmt } from "./views/ChangeMgmt";
@@ -19,13 +20,13 @@ import { Pendencias } from "./views/Pendencias";
 import { CHECKLIST } from "./data/checklist";
 
 const NAV = [
-  { group: "Dashboards", items: [{ k: "dashProc", label: "Dashboard Processo", icon: "dash" }, { k: "dashReg", label: "Dashboard Regras", icon: "dashR" }] },
+  { group: "Dashboards", items: [{ k: "dashProc", label: "Dashboard Processo", icon: "dash" }, { k: "dashReg", label: "Dashboard Regras", icon: "dashR" }, { k: "dashTst", label: "Dashboard Testes", icon: "tests" }] },
   { group: "Diagnóstico", items: [{ k: "qasis", label: "Questionário AS IS", icon: "qasis" }, { k: "flow", label: "AS IS · Fluxo", icon: "flow" }, { k: "tobe", label: "To Be", icon: "tobe" }, { k: "change", label: "Change Management", icon: "change" }, { k: "explorer", label: "Coverage Explorer", icon: "explorer" }] },
   { group: "Produto & Regras", items: [{ k: "regras", label: "Regras", icon: "rules" }, { k: "pendencias", label: "Pendências", icon: "pend" }, { k: "testes", label: "Testes", icon: "tests" }, { k: "documentos", label: "Documentos", icon: "doc" }] },
   { group: "Base", items: [{ k: "uow", label: "Units of Work", icon: "uow" }, { k: "cadastros", label: "Cadastros", icon: "cad" }] },
 ];
 const TITLES: Record<string, [string, string]> = {
-  dashProc: ["Dashboard", "Processo"], dashReg: ["Dashboard", "Regras"],
+  dashProc: ["Dashboard", "Processo"], dashReg: ["Dashboard", "Regras"], dashTst: ["Dashboard", "Testes e pendências"],
   qasis: ["Questionário AS IS", "Guia de discovery do ciclo de receita"],
   flow: ["AS IS", "Mapeamento do processo atual"],
   tobe: ["To Be", "Estado futuro por ação"], change: ["Change Management", "Plano de transição"], explorer: ["Coverage Explorer", "Inteligência operacional"],
@@ -106,6 +107,7 @@ function Shell() {
         <div className={"content" + (view === "flow" ? " no-pad" : "")}>
           {view === "dashProc" && <DashProcesso go={go} />}
           {view === "dashReg" && <DashRegras />}
+          {view === "dashTst" && <DashTestes />}
           {view === "qasis" && <QuestionarioASIS />}
           {view === "flow" && <FlowBuilder />}
           {view === "tobe" && <ToBe />}

@@ -42,6 +42,8 @@ function normalize(val: any): DB {
     documentos: toArr(val?.documentos),
     testChecklist: toRec(val?.testChecklist),
     regraTestes: toRec(val?.regraTestes),
+    checklistExtra: toArr(val?.checklistExtra),
+    testExtra: toArr(val?.testExtra),
   };
 }
 

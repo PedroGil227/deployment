@@ -3,7 +3,8 @@ import { useStore } from "../store";
 import { useAuth } from "../auth";
 import { CHECK_AUDITORIA, CHECK_AUDITORIA_SECOES, CHECK_FDE, CHECK_FDE_SECOES, type TestChecklistItem } from "../data/testchecklists";
 import { regraStatusClass } from "../lib/constants";
-import { StatusBadge } from "../ui";
+import { uid } from "../lib/derive";
+import { StatusBadge, Modal, Field, Ic, icons } from "../ui";
 import type { DB, ChecklistAnswer } from "../types";
 
 const EMPTY: ChecklistAnswer = { status: "", comentario: "", editadoPor: "", editadoEm: "" };
@@ -34,24 +35,43 @@ function ComentarioInput({ value, onCommit, placeholder }: { value: string; onCo
   );
 }
 
-function ChecklistSection({ items, secoes }: { items: TestChecklistItem[]; secoes: string[] }) {
+function AddTestItemModal({ secoes, onClose, onSave }: { secoes: string[]; onClose: () => void; onSave: (secao: string, pergunta: string) => void }) {
+  const [secao, setSecao] = useState(secoes[0] || "");
+  const [pergunta, setPergunta] = useState("");
+  return (
+    <Modal title="Novo item do checklist" onClose={onClose} onSave={() => { if (pergunta.trim() && secao) onSave(secao, pergunta.trim()); }}>
+      <Field label="Seção"><select value={secao} onChange={(e) => setSecao(e.target.value)}>{secoes.map((s) => <option key={s}>{s}</option>)}</select></Field>
+      <Field label="Item / pergunta"><textarea rows={3} value={pergunta} onChange={(e) => setPergunta(e.target.value)} /></Field>
+    </Modal>
+  );
+}
+
+function ChecklistSection({ tipo, items, secoes }: { tipo: string; items: TestChecklistItem[]; secoes: string[] }) {
   const { db, upd } = useStore();
   const { user } = useAuth();
+  const [add, setAdd] = useState(false);
   const ans = (id: string): ChecklistAnswer => (db.testChecklist && db.testChecklist[id]) || EMPTY;
   const stamp = () => ({ editadoPor: user?.email || "—", editadoEm: new Date().toISOString().slice(0, 10) });
   const cycle = (id: string) => upd((d: DB) => { const c: ChecklistAnswer = { ...EMPTY, ...(d.testChecklist[id] || {}) }; c.status = NEXT[c.status || ""]; Object.assign(c, stamp()); d.testChecklist[id] = c; });
   const setC = (id: string, v: string) => upd((d: DB) => { const c: ChecklistAnswer = { ...EMPTY, ...(d.testChecklist[id] || {}) }; c.comentario = v; Object.assign(c, stamp()); d.testChecklist[id] = c; });
-  const checked = items.filter((q) => ans(q.id).status === "check").length;
-  const pend = items.filter((q) => ans(q.id).status === "x").length;
+  const addItem = (secao: string, pergunta: string) => { upd((d: DB) => { d.testExtra.push({ id: uid("tst"), tipo, secao, pergunta }); }); setAdd(false); };
+  const delItem = (id: string) => { if (!confirm("Excluir este item?")) return; upd((d: DB) => { d.testExtra = d.testExtra.filter((x) => x.id !== id); delete d.testChecklist[id]; }); };
+  const all = [
+    ...items.map((q) => ({ id: q.id, secao: q.secao, pergunta: q.pergunta, custom: false })),
+    ...(db.testExtra || []).filter((e) => e.tipo === tipo).map((e) => ({ id: e.id, secao: e.secao, pergunta: e.pergunta, custom: true })),
+  ];
+  const checked = all.filter((q) => ans(q.id).status === "check").length;
+  const pend = all.filter((q) => ans(q.id).status === "x").length;
   return (
     <div>
       <div className="row" style={{ gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         <span className="badge b-green">✓ {checked} ok</span>
         <span className="badge b-red">✕ {pend} pendências</span>
-        <span className="chip">{checked}/{items.length}</span>
+        <span className="chip">{checked}/{all.length}</span>
+        <button className="btn primary sm" style={{ marginLeft: "auto" }} onClick={() => setAdd(true)}><Ic d={icons.plus} size={13} />Adicionar item</button>
       </div>
       {secoes.map((sec) => {
-        const its = items.filter((i) => i.secao === sec);
+        const its = all.filter((i) => i.secao === sec);
         if (!its.length) return null;
         const c = its.filter((q) => ans(q.id).status === "check").length;
         return (
@@ -63,7 +83,7 @@ function ChecklistSection({ items, secoes }: { items: TestChecklistItem[]; secoe
                 <tr key={q.id}>
                   <td className="dim" style={{ fontSize: 11 }}>{a.editadoPor ? (<>{a.editadoPor}{a.editadoEm && <div style={{ opacity: 0.7 }}>{a.editadoEm}</div>}</>) : "—"}</td>
                   <td><button style={boxStyle(a.status)} onClick={() => cycle(q.id)} title="Clique: vazio → ✓ → ✕">{a.status === "check" ? "✓" : a.status === "x" ? "✕" : ""}</button></td>
-                  <td style={{ minWidth: 300 }}>{q.pergunta}</td>
+                  <td style={{ minWidth: 300 }}>{q.pergunta}{q.custom && <button className="btn ghost sm danger" style={{ marginLeft: 6, padding: "0 6px" }} title="Excluir item" onClick={() => delItem(q.id)}>×</button>}</td>
                   <td><ComentarioInput value={a.comentario} onCommit={(v) => setC(q.id, v)} placeholder="Observações…" /></td>
                 </tr>
               ); })}</tbody>
@@ -71,6 +91,7 @@ function ChecklistSection({ items, secoes }: { items: TestChecklistItem[]; secoe
           </div>
         );
       })}
+      {add && <AddTestItemModal secoes={secoes} onClose={() => setAdd(false)} onSave={addItem} />}
     </div>
   );
 }
@@ -122,8 +143,8 @@ export function Testes() {
         <button className={"ce-pill " + (tab === "fde" ? "active" : "")} onClick={() => setTab("fde")}>Checklist FDE</button>
         <button className={"ce-pill " + (tab === "regras" ? "active" : "")} onClick={() => setTab("regras")}>Testes de regra</button>
       </div>
-      {tab === "aud" && <ChecklistSection items={CHECK_AUDITORIA} secoes={CHECK_AUDITORIA_SECOES} />}
-      {tab === "fde" && <ChecklistSection items={CHECK_FDE} secoes={CHECK_FDE_SECOES} />}
+      {tab === "aud" && <ChecklistSection tipo="aud" items={CHECK_AUDITORIA} secoes={CHECK_AUDITORIA_SECOES} />}
+      {tab === "fde" && <ChecklistSection tipo="fde" items={CHECK_FDE} secoes={CHECK_FDE_SECOES} />}
       {tab === "regras" && <RegraTestSection />}
     </div>
   );
