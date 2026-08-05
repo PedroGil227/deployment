@@ -48,11 +48,11 @@ function normalize(val: any): DB {
   };
 }
 
-interface StoreCtx { db: DB; upd: (fn: (d: DB) => void) => void; ready: boolean; }
+interface StoreCtx { db: DB; upd: (fn: (d: DB) => void) => void; ready: boolean; hospitalNome: string; }
 const Ctx = createContext<StoreCtx>(null as any);
 export const useStore = () => useContext(Ctx);
 
-export function StoreProvider({ hospitalId, children }: { hospitalId: string; children: any }) {
+export function StoreProvider({ hospitalId, hospitalNome = "", children }: { hospitalId: string; hospitalNome?: string; children: any }) {
   const [db, setDb] = useState<DB | null>(null);
   const path = "hospitais/data/" + hospitalId;
 
@@ -89,5 +89,5 @@ export function StoreProvider({ hospitalId, children }: { hospitalId: string; ch
   if (!db)
     return <div className="login-wrap"><div className="dim">Carregando dados…</div></div>;
 
-  return <Ctx.Provider value={{ db, upd, ready: true }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ db, upd, ready: true, hospitalNome }}>{children}</Ctx.Provider>;
 }

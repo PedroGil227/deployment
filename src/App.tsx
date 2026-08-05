@@ -153,7 +153,7 @@ function Hospitais() {
   // Migração única do workspace legado ("frame") para o hospital "Samuel Libânio".
   useEffect(() => { migrateLegacyIfNeeded().catch((e) => console.error("Falha na migração de hospital:", e)); }, []);
   if (!sel) return <HospitalPicker onOpen={(id, nome) => setSel({ id, nome })} />;
-  return <StoreProvider hospitalId={sel.id}><Shell hospitalNome={sel.nome} onTrocar={() => setSel(null)} /></StoreProvider>;
+  return <StoreProvider hospitalId={sel.id} hospitalNome={sel.nome}><Shell hospitalNome={sel.nome} onTrocar={() => setSel(null)} /></StoreProvider>;
 }
 
 function Gate() {

@@ -33,6 +33,8 @@ export interface Regra {
   operadoras: string[]; tiposAtendimento: string[]; problemas: string[]; escopos: string[];
   status: string; obs: string;
   pastaHospital?: string; pastaOperadora?: string;
+  // Efetividade (base de alertas do hospital) e metadados vindos da base de regras.
+  codigo?: string; alertasGerados?: number; alertasResolvidos?: number; isLLM?: boolean;
 }
 export interface GapManual {
   id: string; tipo: string; origem: string; processo: string; acao: string;

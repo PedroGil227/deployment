@@ -4,6 +4,9 @@ import { deriveTobe, deriveGaps, nameById } from "../lib/derive";
 import { PRIORIDADES, REGRA_STATUS, STATUS_WEIGHT, regraStatusClass } from "../lib/constants";
 import { Badge, StatusBadge, Chips } from "../ui";
 
+const effCls = (e: number | null) => (e == null ? "b-gray" : e >= 0.35 ? "b-green" : e >= 0.15 ? "b-amber" : "b-red");
+const effLabel = (e: number | null) => (e == null ? "—" : Math.round(e * 100) + "%");
+
 const Stat = ({ label, val, color, sub }: any) => (
   <div className="stat"><div className="label">{label}</div><div className="val" style={color ? { color } : {}}>{val}</div>{sub && <div className="delta">{sub}</div>}</div>
 );
@@ -64,12 +67,14 @@ export function DashProcesso({ go }: { go: (v: string) => void }) {
 export function DashRegras() {
   const { db } = useStore();
   const [modo, setModo] = useState<"ponderada" | "absoluta">("ponderada");
+  const [incTeste, setIncTeste] = useState(false);
   const escopos = db.escopos;
   const pesoTotal = escopos.reduce((s, e) => s + (e.peso || 0), 0);
   const rulesFor = (eid: string) => db.regras.filter((r) => (r.escopos || []).includes(eid));
+  const coberta = (r: any) => r.status === "Ativa" || (incTeste && r.status === "Em teste");
   const lista = escopos.map((e) => {
     const rs = rulesFor(e.id);
-    const coberto = rs.some((r) => r.status === "Ativa");
+    const coberto = rs.some(coberta);
     return { ...e, rules: rs, coberto };
   });
   const totalEscopos = escopos.length;
@@ -87,6 +92,15 @@ export function DashRegras() {
     return { nome: i.nome, total: es.length, ativo, parcial, sem };
   }).filter((x) => x.total > 0);
   const byItemMax = Math.max(1, ...byItem.map((x) => x.total));
+  const catCov = db.itensConta.map((i) => {
+    const es = lista.filter((e) => e.itemConta === i.id);
+    if (!es.length) return null;
+    const pt = es.reduce((s, e) => s + (e.peso || 0), 0);
+    const pc = es.filter((e) => e.coberto).reduce((s, e) => s + (e.peso || 0), 0);
+    const abs = es.filter((e) => e.coberto).length;
+    let g = 0, r = 0; es.forEach((e) => e.rules.forEach((x: any) => { g += x.alertasGerados || 0; r += x.alertasResolvidos || 0; }));
+    return { nome: i.nome, total: es.length, abs, pctP: pt ? Math.round((pc / pt) * 100) : 0, pctA: Math.round((abs / es.length) * 100), eff: g > 0 ? r / g : null };
+  }).filter(Boolean) as any[];
 
   return (
     <div>
@@ -100,10 +114,13 @@ export function DashRegras() {
       </div>
       <div className="card card-pad" style={{ marginTop: 14 }}>
         <div className="between" style={{ marginBottom: 14 }}>
-          <div className="h2">Penetração (só regras ativas)</div>
-          <div className="row" style={{ gap: 4 }}>
-            <button className={"btn sm" + (modo === "ponderada" ? " primary" : "")} onClick={() => setModo("ponderada")}>Ponderada</button>
-            <button className={"btn sm" + (modo === "absoluta" ? " primary" : "")} onClick={() => setModo("absoluta")}>Absoluta</button>
+          <div className="h2">Penetração {incTeste ? "(ativas + em teste)" : "(só regras ativas)"}</div>
+          <div className="row" style={{ gap: 12, alignItems: "center" }}>
+            <label className="row" style={{ gap: 6, fontSize: 12 }}><input type="checkbox" checked={incTeste} onChange={(e) => setIncTeste(e.target.checked)} style={{ width: "auto" }} />Considerar regras em teste</label>
+            <div className="row" style={{ gap: 4 }}>
+              <button className={"btn sm" + (modo === "ponderada" ? " primary" : "")} onClick={() => setModo("ponderada")}>Ponderada</button>
+              <button className={"btn sm" + (modo === "absoluta" ? " primary" : "")} onClick={() => setModo("absoluta")}>Absoluta</button>
+            </div>
           </div>
         </div>
         <div className="row" style={{ gap: 24, alignItems: "center", flexWrap: "wrap" }}>
@@ -116,6 +133,21 @@ export function DashRegras() {
             <div className="bar-row"><div className="bl">Absoluta (contagem)</div><div className="bar-track"><div className="bar-fill" style={{ width: pctAbs + "%", background: modo === "absoluta" ? "#4f46e5" : "#c7cad1", minWidth: 0 }} /></div><div style={{ width: 104, textAlign: "right", fontSize: 12, fontWeight: 600 }}>{cobAbs}/{totalEscopos} · {pctAbs}%</div></div>
           </div>
         </div>
+      </div>
+      <div className="card" style={{ marginTop: 16, overflow: "hidden" }}>
+        <div className="rel-col-h">Cobertura por categoria (item da conta){incTeste ? " · inclui em teste" : ""}</div>
+        <div className="tbl-scroll" style={{ maxHeight: 360 }}><table>
+          <thead><tr><th>Categoria</th><th>Escopos</th><th>Cobertos</th><th>% ponderado (peso)</th><th>% absoluto</th><th>Efetividade</th></tr></thead>
+          <tbody>{catCov.map((c) => (<tr key={c.nome}>
+            <td style={{ fontWeight: 600 }}>{c.nome}</td>
+            <td>{c.total}</td>
+            <td>{c.abs}</td>
+            <td><div className="row" style={{ gap: 8, alignItems: "center" }}><div className="bar-track" style={{ flex: 1, minWidth: 80 }}><div className="bar-fill" style={{ width: c.pctP + "%", background: c.pctP >= 80 ? "#16a34a" : c.pctP >= 40 ? "#d97706" : "#dc2626", minWidth: 0 }} /></div><span style={{ fontSize: 12, fontWeight: 600, width: 34, textAlign: "right" }}>{c.pctP}%</span></div></td>
+            <td>{c.pctA}%</td>
+            <td><Badge cls={effCls(c.eff)}>{effLabel(c.eff)}</Badge></td>
+          </tr>))}
+          {!catCov.length && <tr><td colSpan={6}><div className="empty">Sem escopos.</div></td></tr>}</tbody>
+        </table></div>
       </div>
       <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", marginTop: 16, alignItems: "start" }}>
         <div className="card card-pad"><div className="h2" style={{ marginBottom: 12 }}>Regras por status</div>
