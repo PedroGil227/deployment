@@ -5,7 +5,7 @@ import { seed } from "./data/seed";
 import { buildEscoposSeed, relinkEscopos } from "./data/escopos";
 import type { DB } from "./types";
 
-const DB_PATH = "frame";
+// O caminho de dados é por hospital: hospitais/data/<hospitalId> (montado no StoreProvider).
 
 const toArr = (v: any) => (Array.isArray(v) ? v : v && typeof v === "object" ? Object.values(v) : []);
 const toRec = (v: any) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
@@ -52,11 +52,13 @@ interface StoreCtx { db: DB; upd: (fn: (d: DB) => void) => void; ready: boolean;
 const Ctx = createContext<StoreCtx>(null as any);
 export const useStore = () => useContext(Ctx);
 
-export function StoreProvider({ children }: { children: any }) {
+export function StoreProvider({ hospitalId, children }: { hospitalId: string; children: any }) {
   const [db, setDb] = useState<DB | null>(null);
+  const path = "hospitais/data/" + hospitalId;
 
   useEffect(() => {
-    const r = ref(rtdb, DB_PATH);
+    setDb(null);
+    const r = ref(rtdb, path);
     const unsub = onValue(r, (snap) => {
       const val = snap.val();
       if (!val) { set(r, seed); setDb(seed); return; }
@@ -72,14 +74,14 @@ export function StoreProvider({ children }: { children: any }) {
       setDb(norm);
     });
     return () => unsub();
-  }, []);
+  }, [hospitalId]);
 
   const upd = (fn: (d: DB) => void) => {
     setDb((prev) => {
       if (!prev) return prev;
       const n: DB = JSON.parse(JSON.stringify(prev));
       fn(n);
-      set(ref(rtdb, DB_PATH), n);
+      set(ref(rtdb, path), n);
       return n;
     });
   };

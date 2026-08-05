@@ -64,6 +64,7 @@ export interface Pendencia {
   id: string; nome: string; descricao: string;
   operadorasAplicaveis: string[]; setor: string; responsavel: string;
   alertaEmail: boolean; regras: string[]; status: string; obs: string;
+  area?: string; codigo?: string;
 }
 
 
@@ -79,7 +80,12 @@ export interface TestItemCustom { id: string; tipo: string; secao: string; pergu
 export interface Escopo { id: string; itemConta: string; nome: string; peso: number; operadoras: string[]; }
 
 // Inconsistência registrada durante a implantação. status: "Pendente" | "Resolvido".
-export interface Inconsistencia { id: string; nome: string; descricao: string; planoAcao: string; status: string; }
+// Campos opcionais vêm da base de consistências da conta (Tasy): código, tipo e os flags de fechamento.
+export interface Inconsistencia {
+  id: string; nome: string; descricao: string; planoAcao: string; status: string;
+  codigo?: string; tipo?: string;
+  fechaConta?: boolean; fechaAtendimento?: boolean; fechaProtocolo?: boolean;
+}
 
 // Documento de referência, associável a várias entidades do app.
 export interface Documento {

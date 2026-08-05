@@ -1,6 +1,8 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AuthProvider, useAuth } from "./auth";
 import { StoreProvider, useStore } from "./store";
+import { HospitalPicker } from "./views/HospitalPicker";
+import { migrateLegacyIfNeeded } from "./hospitais";
 import { Ic, icons } from "./ui";
 import { deriveGaps } from "./lib/derive";
 import type { DB } from "./types";
@@ -50,7 +52,7 @@ function globalSearch(db: DB, q: string) {
   return out.slice(0, 12);
 }
 
-function Shell() {
+function Shell({ hospitalNome, onTrocar }: { hospitalNome: string; onTrocar: () => void }) {
   const { db, upd } = useStore();
   const { user, logout } = useAuth();
   const [view, setView] = useState("qasis");
@@ -85,7 +87,8 @@ function Shell() {
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="logo"><div className="logo-mark">R</div><div><div className="logo-txt">Rivio</div><div className="logo-sub">Implantação · Hospital</div></div></div>
+        <div className="logo"><div className="logo-mark">R</div><div><div className="logo-txt">Rivio</div><div className="logo-sub">{hospitalNome}</div></div></div>
+        <button className="btn ghost sm" style={{ width: "100%", justifyContent: "flex-start", marginBottom: 10 }} onClick={onTrocar}><Ic d={icons.explorer} size={13} />Trocar hospital</button>
         {NAV.map((g) => (<div key={g.group}><div className="nav-group-label">{g.group}</div>
           {g.items.map((it) => (<button key={it.k} className={"nav-item " + (view === it.k ? "active" : "")} onClick={() => go(it.k)}><Ic d={icons[it.icon]} />{it.label}{counts[it.k] != null && <span className="nav-badge">{counts[it.k]}</span>}</button>))}
         </div>))}
@@ -145,11 +148,19 @@ function Login() {
   );
 }
 
+function Hospitais() {
+  const [sel, setSel] = useState<{ id: string; nome: string } | null>(null);
+  // Migração única do workspace legado ("frame") para o hospital "Samuel Libânio".
+  useEffect(() => { migrateLegacyIfNeeded().catch((e) => console.error("Falha na migração de hospital:", e)); }, []);
+  if (!sel) return <HospitalPicker onOpen={(id, nome) => setSel({ id, nome })} />;
+  return <StoreProvider hospitalId={sel.id}><Shell hospitalNome={sel.nome} onTrocar={() => setSel(null)} /></StoreProvider>;
+}
+
 function Gate() {
   const { user, loading } = useAuth();
   if (loading) return <div className="login-wrap"><div className="dim">Verificando acesso…</div></div>;
   if (!user) return <Login />;
-  return <StoreProvider><Shell /></StoreProvider>;
+  return <Hospitais />;
 }
 
 export default function App() {
