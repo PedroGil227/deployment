@@ -21,6 +21,7 @@ export const icons: Record<string, any> = {
   plus: <><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></>,
   qasis: <><rect x="8" y="3" width="8" height="4" rx="1" /><path d="M9 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3" /><path d="M9 13l2 2 4-4" /></>,
   pend: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></>,
+  doc: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M8 13h8M8 17h5" /></>,
 };
 
 export const Badge = ({ children, cls = "b-gray" }: any) => <span className={"badge " + cls}>{children}</span>;
@@ -40,17 +41,64 @@ export function Modal({ title, onClose, children, onSave, saveLabel = "Salvar", 
   );
 }
 
-export function MultiSelect({ options, value = [], onChange }: { options: Named[]; value: string[]; onChange: (v: string[]) => void }) {
+// Painel interno de opções (busca + selecionar tudo/limpar + checkboxes). Compartilhado por
+// MultiSelect (editores) e FilterMulti (filtros).
+function OptionPanel({ options, value, onChange, allowAll = true }: { options: Named[]; value: string[]; onChange: (v: string[]) => void; allowAll?: boolean }) {
+  const [q, setQ] = useState("");
+  const filtered = options.filter((o) => o.nome.toLowerCase().includes(q.toLowerCase()));
+  const toggle = (id: string) => onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
   return (
-    <div className="chips" style={{ gap: 6 }}>
-      {options.length === 0 && <span className="dim" style={{ fontSize: 11 }}>Nenhuma opção cadastrada</span>}
-      {options.map((o) => {
-        const on = value.includes(o.id);
-        return <button key={o.id} type="button" className={"ce-pill " + (on ? "active" : "")} style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => onChange(on ? value.filter((v) => v !== o.id) : [...value, o.id])}>{o.nome}</button>;
-      })}
+    <div className="mini-dd-menu" style={{ minWidth: 240, maxHeight: 300, overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
+      <input type="text" placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: "100%", marginBottom: 6 }} autoFocus />
+      {allowAll && (
+        <div className="row" style={{ gap: 6, marginBottom: 6 }}>
+          <button type="button" className="btn ghost sm" onClick={() => onChange(options.map((o) => o.id))}>Selecionar tudo</button>
+          <button type="button" className="btn ghost sm" onClick={() => onChange([])}>Limpar</button>
+        </div>
+      )}
+      {filtered.map((o) => (
+        <label key={o.id} className="row" style={{ gap: 6, padding: "3px 4px", cursor: "pointer" }}>
+          <input type="checkbox" checked={value.includes(o.id)} onChange={() => toggle(o.id)} />
+          <span style={{ fontSize: 12 }}>{o.nome}</span>
+        </label>
+      ))}
+      {!options.length && <div className="dim" style={{ fontSize: 11, padding: 4 }}>Nenhuma opção cadastrada</div>}
+      {options.length > 0 && !filtered.length && <div className="dim" style={{ fontSize: 11, padding: 4 }}>Nada encontrado</div>}
     </div>
   );
 }
+
+// Lista suspensa de seleção múltipla para editores. Mesma API de antes (options/value/onChange).
+export function MultiSelect({ options, value = [], onChange }: { options: Named[]; value: string[]; onChange: (v: string[]) => void }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => { if (!open) return; const h = () => setOpen(false); window.addEventListener("click", h); return () => window.removeEventListener("click", h); }, [open]);
+  const sel = options.filter((o) => value.includes(o.id));
+  return (
+    <div className="mini-dd" style={{ display: "block" }} onClick={(e) => e.stopPropagation()}>
+      <button type="button" className="btn sm" style={{ width: "100%", justifyContent: "space-between" }} onClick={() => setOpen(!open)}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value.length ? value.length + (value.length > 1 ? " selecionados" : " selecionado") : "Selecionar…"}</span><span>▾</span>
+      </button>
+      {sel.length > 0 && <div className="chips" style={{ marginTop: 5 }}>{sel.map((o) => <span key={o.id} className="chip">{o.nome}<span style={{ cursor: "pointer", marginLeft: 3 }} onClick={() => onChange(value.filter((v) => v !== o.id))}>×</span></span>)}</div>}
+      {open && <OptionPanel options={options} value={value} onChange={onChange} />}
+    </div>
+  );
+}
+
+// Filtro de seleção múltipla (vazio = todos). Substitui os <select> de filtro com "Selecionar tudo".
+export function FilterMulti({ label, options, value, onChange }: { label: string; options: Named[]; value: string[]; onChange: (v: string[]) => void }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => { if (!open) return; const h = () => setOpen(false); window.addEventListener("click", h); return () => window.removeEventListener("click", h); }, [open]);
+  return (
+    <div className="mini-dd" onClick={(e) => e.stopPropagation()}>
+      <button type="button" className={"btn sm" + (value.length ? " primary" : "")} onClick={() => setOpen(!open)}>{label}{value.length ? ": " + value.length : ": todos"} ▾</button>
+      {open && <OptionPanel options={options} value={value} onChange={onChange} />}
+    </div>
+  );
+}
+
+// Helper de filtro: sel vazio = todos.
+export const inSel = (sel: string[], id: string) => sel.length === 0 || sel.includes(id);
+export const anySel = (sel: string[], arr: string[]) => sel.length === 0 || (arr || []).some((a) => sel.includes(a));
 
 export function MiniDropdown({ label, items, cls }: { label: string; items: string[]; cls?: string }) {
   const [o, setO] = useState(false);

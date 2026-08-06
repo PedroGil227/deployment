@@ -1,15 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store";
 import { uid, nameById, namesByIds } from "../lib/derive";
-import { Badge, Modal, Field, MultiSelect, Ic, icons, PastaBar, pastaMatch, pastaStamp } from "../ui";
+import { Badge, Modal, Field, MultiSelect, FilterMulti, anySel, inSel, Ic, icons } from "../ui";
 import type { DB, Processo } from "../types";
 
 export function FlowBuilder() {
   const { db, upd } = useStore();
-  const [pastaH, setPastaH] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [drawerId, setDrawerId] = useState<string | null>(null);
-  const [filters, setFilters] = useState({ operadora: "", tipoAtendimento: "", tipoConta: "", itemConta: "" });
+  const [filters, setFilters] = useState<{ operadora: string[]; tipoAtendimento: string[]; tipoConta: string[]; itemConta: string[] }>({ operadora: [], tipoAtendimento: [], tipoConta: [], itemConta: [] });
   const [drag, setDrag] = useState<any>(null);
   const [editNode, setEditNode] = useState<any>(null);
   const [editAction, setEditAction] = useState<any>(null);
@@ -25,11 +24,11 @@ export function FlowBuilder() {
     return na - nb;
   });
   const f = filters;
-  const activeFilter = Object.values(f).some(Boolean);
+  const activeFilter = f.operadora.length > 0 || f.tipoAtendimento.length > 0 || f.tipoConta.length > 0 || f.itemConta.length > 0;
   const nodeMatches = (p: Processo) => {
     const acts = actionsByProc(p.id);
-    const anyMatch = acts.length ? acts.some((a) => (!f.operadora || a.operadoras.includes(f.operadora)) && (!f.tipoAtendimento || a.tiposAtendimento.includes(f.tipoAtendimento)) && (!f.tipoConta || a.tipoConta === f.tipoConta) && (!f.itemConta || a.itemConta === f.itemConta)) : true;
-    const procMatch = (!f.operadora || p.operadoras.includes(f.operadora)) && (!f.tipoAtendimento || p.tiposAtendimento.includes(f.tipoAtendimento));
+    const anyMatch = acts.length ? acts.some((a) => anySel(f.operadora, a.operadoras) && anySel(f.tipoAtendimento, a.tiposAtendimento) && inSel(f.tipoConta, a.tipoConta) && inSel(f.itemConta, a.itemConta)) : true;
+    const procMatch = anySel(f.operadora, p.operadoras) && anySel(f.tipoAtendimento, p.tiposAtendimento);
     return anyMatch && procMatch;
   };
   const [dragPos, setDragPos] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -112,19 +111,19 @@ export function FlowBuilder() {
     return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
   }, [linkFrom]);
   const drawerNode = db.processos.find((p) => p.id === drawerId);
-  const procs = pastaH === null ? [] : db.processos.filter((p) => pastaMatch(pastaH, "", p.pastaHospital, p.pastaOperadora));
+  const procs = db.processos;
   const procIds = new Set(procs.map((p) => p.id));
   const conexoesInPasta = db.conexoes.filter((c) => procIds.has(c.from) && procIds.has(c.to));
 
   const addNode = (tipo: "processo" | "decisao") => {
     const sl = canvasRef.current ? canvasRef.current.scrollLeft : 0, st = canvasRef.current ? canvasRef.current.scrollTop : 0;
-    const n: Processo = { id: uid("p"), nome: tipo === "decisao" ? "Nova decisão" : "Novo processo", descricao: "", tipo, x: 120 + sl, y: 120 + st, tiposAtendimento: [], operadoras: [], sistema: "", setor: "", responsavel: "", ...pastaStamp(pastaH!, "") };
+    const n: Processo = { id: uid("p"), nome: tipo === "decisao" ? "Nova decisão" : "Novo processo", descricao: "", tipo, x: 120 + sl, y: 120 + st, tiposAtendimento: [], operadoras: [], sistema: "", setor: "", responsavel: "" };
     upd((d: DB) => { d.processos.push(n); }); setSelected(n.id); setEditNode(n);
   };
   const addChild = (parent: Processo) => {
     const childCount = db.conexoes.filter((c) => c.from === parent.id).length;
     const isDec = parent.tipo === "decisao";
-    const n: Processo = { id: uid("p"), nome: isDec ? "Novo caminho" : "Novo processo", descricao: "", tipo: "processo", x: parent.x + 250, y: parent.y + childCount * 140, tiposAtendimento: [...parent.tiposAtendimento], operadoras: [...parent.operadoras], sistema: "", setor: "", responsavel: "", ...pastaStamp(pastaH!, "") };
+    const n: Processo = { id: uid("p"), nome: isDec ? "Novo caminho" : "Novo processo", descricao: "", tipo: "processo", x: parent.x + 250, y: parent.y + childCount * 140, tiposAtendimento: [...parent.tiposAtendimento], operadoras: [...parent.operadoras], sistema: "", setor: "", responsavel: "" };
     const edgeId = uid("e");
     upd((d: DB) => { d.processos.push(n); d.conexoes.push({ id: edgeId, from: parent.id, to: n.id, label: "" }); });
     setSelected(n.id);
@@ -135,20 +134,16 @@ export function FlowBuilder() {
 
   return (
     <>
-      <div style={{ padding: pastaH !== null ? "14px 16px 0" : "14px 16px" }}>
-        <PastaBar items={db.processos} hospital={pastaH} onChange={(h) => setPastaH(h)} />
-      </div>
-      {pastaH === null ? null : (<>
       <div className="flow-toolbar">
         <button className="btn primary sm" onClick={() => addNode("processo")}><Ic d={icons.plus} size={13} />Processo</button>
         <button className="btn sm" onClick={() => addNode("decisao")}><Ic d={icons.plus} size={13} />Decisão</button>
         <div style={{ width: 1, height: 22, background: "var(--border)" }} />
         <span className="dim" style={{ fontSize: 11 }}>Filtrar:</span>
-        <select className="select-sm" value={f.operadora} onChange={(e) => setFilters({ ...f, operadora: e.target.value })}><option value="">Operadora</option>{db.operadoras.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}</select>
-        <select className="select-sm" value={f.tipoAtendimento} onChange={(e) => setFilters({ ...f, tipoAtendimento: e.target.value })}><option value="">Atendimento</option>{db.tiposAtendimento.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}</select>
-        <select className="select-sm" value={f.tipoConta} onChange={(e) => setFilters({ ...f, tipoConta: e.target.value })}><option value="">Tipo de conta</option>{db.tiposConta.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}</select>
-        <select className="select-sm" value={f.itemConta} onChange={(e) => setFilters({ ...f, itemConta: e.target.value })}><option value="">Item da conta</option>{db.itensConta.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}</select>
-        {activeFilter && <button className="btn ghost sm" onClick={() => setFilters({ operadora: "", tipoAtendimento: "", tipoConta: "", itemConta: "" })}>Limpar</button>}
+        <FilterMulti label="Operadora" options={db.operadoras} value={f.operadora} onChange={(v) => setFilters({ ...f, operadora: v })} />
+        <FilterMulti label="Atendimento" options={db.tiposAtendimento} value={f.tipoAtendimento} onChange={(v) => setFilters({ ...f, tipoAtendimento: v })} />
+        <FilterMulti label="Tipo de conta" options={db.tiposConta} value={f.tipoConta} onChange={(v) => setFilters({ ...f, tipoConta: v })} />
+        <FilterMulti label="Item da conta" options={db.itensConta} value={f.itemConta} onChange={(v) => setFilters({ ...f, itemConta: v })} />
+        {activeFilter && <button className="btn ghost sm" onClick={() => setFilters({ operadora: [], tipoAtendimento: [], tipoConta: [], itemConta: [] })}>Limpar</button>}
         <div style={{ width: 1, height: 22, background: "var(--border)" }} />
         <span className="dim" style={{ fontSize: 11 }}>Linha:</span>
         <div className="row" style={{ gap: 4 }}>
@@ -188,7 +183,6 @@ export function FlowBuilder() {
           {!procs.length && <div style={{ position: "absolute", top: 140, left: 140 }} className="dim">Clique em <b>Processo</b> para começar a desenhar o fluxo AS IS.</div>}
         </div>
       </div>
-      </>)}
 
       {drawerNode && (<div className="drawer-overlay" onClick={() => setDrawerId(null)}>
         <div className="drawer" onClick={(e) => e.stopPropagation()}>

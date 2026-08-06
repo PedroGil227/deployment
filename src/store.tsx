@@ -2,9 +2,10 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { ref, onValue, set } from "firebase/database";
 import { db as rtdb } from "./firebase";
 import { seed } from "./data/seed";
+import { buildEscoposSeed, relinkEscopos } from "./data/escopos";
 import type { DB } from "./types";
 
-const DB_PATH = "frame";
+// O caminho de dados é por hospital: hospitais/data/<hospitalId> (montado no StoreProvider).
 
 const toArr = (v: any) => (Array.isArray(v) ? v : v && typeof v === "object" ? Object.values(v) : []);
 const toRec = (v: any) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
@@ -15,7 +16,7 @@ const toRec = (v: any) => (v && typeof v === "object" && !Array.isArray(v) ? v :
 const sanitizeAcao = (a: any) => ({ operadoras: [], tiposAtendimento: [], itemConta: "", tipoConta: "", ...a });
 const sanitizeProcesso = (p: any) => ({ operadoras: [], tiposAtendimento: [], ...p });
 const sanitizeProblema = (pb: any) => ({ operadoras: [], itensConta: [], tiposAtendimento: [], ...pb });
-const sanitizeRegra = (r: any) => ({ itensConta: [], operadoras: [], tiposAtendimento: [], problemas: [], ...r });
+const sanitizeRegra = (r: any) => ({ itensConta: [], operadoras: [], tiposAtendimento: [], problemas: [], escopos: [], ...r });
 // O Firebase Realtime Database não guarda arrays vazios (ex.: uows: []) — ele simplesmente
 // remove o campo ao salvar. Sem essa sanitização, a próxima leitura vinha sem "uows" e
 // qualquer código que fizesse t.uows.includes(...) quebrava o app inteiro (tela branca).
@@ -36,32 +37,51 @@ function normalize(val: any): DB {
     gapsManuais: toArr(val?.gapsManuais), testes: toArr(val?.testes),
     perguntas: toArr(val?.perguntas), respostas: toRec(val?.respostas),
     pendencias: toArr(val?.pendencias),
+    checklist: toRec(val?.checklist),
+    escopos: toArr(val?.escopos),
+    documentos: toArr(val?.documentos),
+    testChecklist: toRec(val?.testChecklist),
+    regraTestes: toRec(val?.regraTestes),
+    checklistExtra: toArr(val?.checklistExtra),
+    testExtra: toArr(val?.testExtra),
+    inconsistencias: toArr(val?.inconsistencias),
   };
 }
 
-interface StoreCtx { db: DB; upd: (fn: (d: DB) => void) => void; ready: boolean; }
+interface StoreCtx { db: DB; upd: (fn: (d: DB) => void) => void; ready: boolean; hospitalNome: string; }
 const Ctx = createContext<StoreCtx>(null as any);
 export const useStore = () => useContext(Ctx);
 
-export function StoreProvider({ children }: { children: any }) {
+export function StoreProvider({ hospitalId, hospitalNome = "", children }: { hospitalId: string; hospitalNome?: string; children: any }) {
   const [db, setDb] = useState<DB | null>(null);
+  const path = "hospitais/data/" + hospitalId;
 
   useEffect(() => {
-    const r = ref(rtdb, DB_PATH);
+    setDb(null);
+    const r = ref(rtdb, path);
     const unsub = onValue(r, (snap) => {
       const val = snap.val();
-      if (!val) { set(r, seed); setDb(seed); }
-      else setDb(normalize(val));
+      if (!val) { set(r, seed); setDb(seed); return; }
+      // Migração única: injeta a base de escopos se o banco ainda não tiver o campo.
+      if (!val.escopos) {
+        const migrated: DB = { ...normalize(val), escopos: buildEscoposSeed(toArr(val.itensConta)) };
+        set(r, migrated); setDb(migrated); return;
+      }
+      const norm = normalize(val);
+      // Re-vincula escopos da base a itens da conta criados/renomeados depois da 1ª migração.
+      const rel = relinkEscopos(norm.escopos, norm.itensConta);
+      if (rel.changed) { const fixed: DB = { ...norm, escopos: rel.escopos }; set(r, fixed); setDb(fixed); return; }
+      setDb(norm);
     });
     return () => unsub();
-  }, []);
+  }, [hospitalId]);
 
   const upd = (fn: (d: DB) => void) => {
     setDb((prev) => {
       if (!prev) return prev;
       const n: DB = JSON.parse(JSON.stringify(prev));
       fn(n);
-      set(ref(rtdb, DB_PATH), n);
+      set(ref(rtdb, path), n);
       return n;
     });
   };
@@ -69,5 +89,5 @@ export function StoreProvider({ children }: { children: any }) {
   if (!db)
     return <div className="login-wrap"><div className="dim">Carregando dados…</div></div>;
 
-  return <Ctx.Provider value={{ db, upd, ready: true }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ db, upd, ready: true, hospitalNome }}>{children}</Ctx.Provider>;
 }

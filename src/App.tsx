@@ -1,36 +1,39 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AuthProvider, useAuth } from "./auth";
 import { StoreProvider, useStore } from "./store";
+import { HospitalPicker } from "./views/HospitalPicker";
+import { migrateLegacyIfNeeded } from "./hospitais";
 import { Ic, icons } from "./ui";
 import { deriveGaps } from "./lib/derive";
 import type { DB } from "./types";
 import { DashProcesso, DashRegras } from "./views/Dashboards";
+import { DashTestes } from "./views/DashTestes";
 import { FlowBuilder } from "./views/Flow";
 import { ToBe } from "./views/ToBe";
 import { ChangeMgmt } from "./views/ChangeMgmt";
 import { CoverageExplorer } from "./views/Coverage";
 import { UoWView } from "./views/UoW";
 import { Regras } from "./views/Regras";
-import { Gaps } from "./views/Gaps";
+import { Documentos } from "./views/Documentos";
+import { Inconsistencias } from "./views/Inconsistencias";
 import { Testes } from "./views/Testes";
 import { Cadastros } from "./views/Cadastros";
-import { QuestionariosASIS } from "./views/QuestionariosASIS";
-import { MapeamentoAI } from "./views/MapeamentoAI";
+import { QuestionarioASIS } from "./views/QuestionarioASIS";
 import { Pendencias } from "./views/Pendencias";
+import { CHECKLIST } from "./data/checklist";
 
 const NAV = [
-  { group: "Dashboards", items: [{ k: "dashProc", label: "Dashboard Processo", icon: "dash" }, { k: "dashReg", label: "Dashboard Regras", icon: "dashR" }] },
-  { group: "Diagnóstico", items: [{ k: "qasis", label: "Questionários AS IS", icon: "qasis" }, { k: "mapAI", label: "Mapeamento AS IS · AI RIVIO", icon: "qasis" }, { k: "flow", label: "AS IS · Fluxo", icon: "flow" }, { k: "tobe", label: "To Be", icon: "tobe" }, { k: "change", label: "Change Management", icon: "change" }, { k: "explorer", label: "Coverage Explorer", icon: "explorer" }] },
-  { group: "Produto & Regras", items: [{ k: "uow", label: "Units of Work", icon: "uow" }, { k: "regras", label: "Regras", icon: "rules" }, { k: "pendencias", label: "Pendências", icon: "pend" }, { k: "gaps", label: "Gaps", icon: "gaps" }, { k: "testes", label: "Testes", icon: "tests" }] },
-  { group: "Base", items: [{ k: "cadastros", label: "Cadastros", icon: "cad" }] },
+  { group: "Dashboards", items: [{ k: "dashProc", label: "Dashboard Processo", icon: "dash" }, { k: "dashReg", label: "Dashboard Regras", icon: "dashR" }, { k: "dashTst", label: "Dashboard Testes", icon: "tests" }] },
+  { group: "Diagnóstico", items: [{ k: "qasis", label: "Questionário AS IS", icon: "qasis" }, { k: "flow", label: "AS IS · Fluxo", icon: "flow" }, { k: "tobe", label: "To Be", icon: "tobe" }, { k: "change", label: "Change Management", icon: "change" }, { k: "explorer", label: "Coverage Explorer", icon: "explorer" }] },
+  { group: "Produto & Regras", items: [{ k: "regras", label: "Regras", icon: "rules" }, { k: "pendencias", label: "Pendências", icon: "pend" }, { k: "testes", label: "Testes", icon: "tests" }, { k: "documentos", label: "Documentos", icon: "doc" }, { k: "inconsistencias", label: "Inconsistências", icon: "gaps" }] },
+  { group: "Base", items: [{ k: "uow", label: "Units of Work", icon: "uow" }, { k: "cadastros", label: "Cadastros", icon: "cad" }] },
 ];
 const TITLES: Record<string, [string, string]> = {
-  dashProc: ["Dashboard", "Processo"], dashReg: ["Dashboard", "Regras"],
-  qasis: ["Questionários AS IS", "Descoberta por setor e operadora"],
-  mapAI: ["Mapeamento AS IS", "AI RIVIO · gerado a partir do questionário"],
+  dashProc: ["Dashboard", "Processo"], dashReg: ["Dashboard", "Regras"], dashTst: ["Dashboard", "Testes e pendências"],
+  qasis: ["Questionário AS IS", "Guia de discovery do ciclo de receita"],
   flow: ["AS IS", "Mapeamento do processo atual"],
   tobe: ["To Be", "Estado futuro por ação"], change: ["Change Management", "Plano de transição"], explorer: ["Coverage Explorer", "Inteligência operacional"],
-  uow: ["Units of Work", "Base RCM 2.0"], regras: ["Regras", "Auditoria e problemas"], pendencias: ["Pendências", "Gestão do Tasy por operadora"], gaps: ["Gaps", "Lacunas de cobertura"],
+  uow: ["Units of Work", "Base RCM 2.0"], regras: ["Regras", "Escopos e regras"], pendencias: ["Pendências", "Gestão do Tasy por operadora"], documentos: ["Documentos", "Referências e o que validar"], inconsistencias: ["Inconsistências", "Registro e plano de ação"],
   testes: ["Testes", "Validação de regras e features"], cadastros: ["Cadastros", "Entidades base"],
 };
 
@@ -42,14 +45,14 @@ function globalSearch(db: DB, q: string) {
   db.unitsOfWork.forEach((u) => { if (u.nome.toLowerCase().includes(t)) push("Unit of Work", u.nome, "uow"); });
   db.regras.forEach((r) => { if (r.nome.toLowerCase().includes(t)) push("Regra", r.nome, "regras"); });
   db.problemas.forEach((p) => { if (p.nome.toLowerCase().includes(t)) push("Problema", p.nome, "regras"); });
-  db.perguntas.forEach((p) => { if (p.questionamento.toLowerCase().includes(t)) push("Questionamento", p.questionamento, "qasis"); });
+  CHECKLIST.forEach((q2) => { if (q2.pergunta.toLowerCase().includes(t)) push("Pergunta", q2.pergunta, "qasis"); });
   db.pendencias.forEach((p) => { if (p.nome.toLowerCase().includes(t)) push("Pendência", p.nome, "pendencias"); });
   db.itensConta.forEach((i) => { if (i.nome.toLowerCase().includes(t)) push("Item da conta", i.nome, "explorer"); });
   db.operadoras.forEach((o) => { if (o.nome.toLowerCase().includes(t)) push("Operadora", o.nome, "cadastros"); });
   return out.slice(0, 12);
 }
 
-function Shell() {
+function Shell({ hospitalNome, onTrocar }: { hospitalNome: string; onTrocar: () => void }) {
   const { db, upd } = useStore();
   const { user, logout } = useAuth();
   const [view, setView] = useState("qasis");
@@ -57,7 +60,7 @@ function Shell() {
   const restoreRef = useRef<HTMLInputElement>(null);
   const results = useMemo(() => globalSearch(db, q), [db, q]);
   const go = (v: string) => { setView(v); setQ(""); setShowSr(false); };
-  const counts: Record<string, number> = { qasis: db.perguntas.length, flow: db.processos.length, tobe: db.acoes.length, uow: db.unitsOfWork.length, regras: db.regras.length, pendencias: db.pendencias.length, gaps: deriveGaps(db).length, testes: db.testes.length };
+  const counts: Record<string, number> = { qasis: CHECKLIST.length, flow: db.processos.length, tobe: db.acoes.length, uow: db.unitsOfWork.length, regras: db.regras.length, pendencias: db.pendencias.length, documentos: db.documentos.length, inconsistencias: db.inconsistencias.length };
 
   // Backup local: baixa TODO o conteúdo atual do app (já lido via Firebase) direto do
   // navegador, num arquivo .json — sem precisar de nenhum acesso ao Console do Firebase.
@@ -84,7 +87,8 @@ function Shell() {
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="logo"><div className="logo-mark">R</div><div><div className="logo-txt">Rivio</div><div className="logo-sub">Implantação · Hospital</div></div></div>
+        <div className="logo"><div className="logo-mark">R</div><div><div className="logo-txt">Rivio</div><div className="logo-sub">{hospitalNome}</div></div></div>
+        <button className="btn ghost sm" style={{ width: "100%", justifyContent: "flex-start", marginBottom: 10 }} onClick={onTrocar}><Ic d={icons.explorer} size={13} />Trocar hospital</button>
         {NAV.map((g) => (<div key={g.group}><div className="nav-group-label">{g.group}</div>
           {g.items.map((it) => (<button key={it.k} className={"nav-item " + (view === it.k ? "active" : "")} onClick={() => go(it.k)}><Ic d={icons[it.icon]} />{it.label}{counts[it.k] != null && <span className="nav-badge">{counts[it.k]}</span>}</button>))}
         </div>))}
@@ -107,8 +111,8 @@ function Shell() {
         <div className={"content" + (view === "flow" ? " no-pad" : "")}>
           {view === "dashProc" && <DashProcesso go={go} />}
           {view === "dashReg" && <DashRegras />}
-          {view === "qasis" && <QuestionariosASIS />}
-          {view === "mapAI" && <MapeamentoAI go={go} />}
+          {view === "dashTst" && <DashTestes />}
+          {view === "qasis" && <QuestionarioASIS />}
           {view === "flow" && <FlowBuilder />}
           {view === "tobe" && <ToBe />}
           {view === "change" && <ChangeMgmt />}
@@ -116,8 +120,9 @@ function Shell() {
           {view === "uow" && <UoWView />}
           {view === "regras" && <Regras />}
           {view === "pendencias" && <Pendencias />}
-          {view === "gaps" && <Gaps />}
           {view === "testes" && <Testes />}
+          {view === "documentos" && <Documentos />}
+          {view === "inconsistencias" && <Inconsistencias />}
           {view === "cadastros" && <Cadastros />}
         </div>
       </div>
@@ -143,11 +148,19 @@ function Login() {
   );
 }
 
+function Hospitais() {
+  const [sel, setSel] = useState<{ id: string; nome: string } | null>(null);
+  // Migração única do workspace legado ("frame") para o hospital "Samuel Libânio".
+  useEffect(() => { migrateLegacyIfNeeded().catch((e) => console.error("Falha na migração de hospital:", e)); }, []);
+  if (!sel) return <HospitalPicker onOpen={(id, nome) => setSel({ id, nome })} />;
+  return <StoreProvider hospitalId={sel.id} hospitalNome={sel.nome}><Shell hospitalNome={sel.nome} onTrocar={() => setSel(null)} /></StoreProvider>;
+}
+
 function Gate() {
   const { user, loading } = useAuth();
   if (loading) return <div className="login-wrap"><div className="dim">Verificando acesso…</div></div>;
   if (!user) return <Login />;
-  return <StoreProvider><Shell /></StoreProvider>;
+  return <Hospitais />;
 }
 
 export default function App() {

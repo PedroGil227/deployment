@@ -127,7 +127,7 @@ export function MapeamentoAI({ go }: { go?: (v: string) => void }) {
       const n: Processo = {
         id: uid("p"), nome: setor, descricao: "Gerado automaticamente pelo Mapeamento AI a partir do questionário AS IS.",
         tipo: "processo", x: 120 + (setorIndex[setor] || 0) * 40, y: 120 + (setorIndex[setor] || 0) * 160,
-        tiposAtendimento: [], operadoras: [], sistema: "", setor: "", responsavel: "", ...pastaStamp(pastaH!, ""),
+        tiposAtendimento: [], operadoras: [], sistema: "", setor: "", responsavel: "",
       };
       d.processos.push(n); laneLast[setor] = n.id; laneCount[setor] = 1;
       return n.id;
@@ -141,7 +141,7 @@ export function MapeamentoAI({ go }: { go?: (v: string) => void }) {
           id: uid("p"), nome: r.acao || r.questionamento.slice(0, 60), descricao: r.resposta,
           tipo: r.tipoAcao === "Criar decisão" ? "decisao" : "processo",
           x: 120 + idx * 250, y: 120 + (setorIndex[r.setor] || 0) * 160,
-          tiposAtendimento: [], operadoras: [], sistema: "", setor: "", responsavel: "", ...pastaStamp(pastaH!, ""),
+          tiposAtendimento: [], operadoras: [], sistema: "", setor: "", responsavel: "",
         };
         d.processos.push(n);
         if (prevId) d.conexoes.push({ id: uid("e"), from: prevId, to: n.id, label: "" });
@@ -178,7 +178,7 @@ export function MapeamentoAI({ go }: { go?: (v: string) => void }) {
     setMovido(true);
   };
 
-  const podeGerar = pastaH !== null && accepted.length > 0;
+  const podeGerar = accepted.length > 0;
 
   return (
     <div>
@@ -187,14 +187,10 @@ export function MapeamentoAI({ go }: { go?: (v: string) => void }) {
         <p>Importe a planilha de respostas do Questionário AS IS (mesmo formato do questionarios-as-is.xlsx). Cada linha é traduzida automaticamente em processo, decisão, ação ou candidato TO BE, de acordo com o "Tipo de ação aplicada" — e quando essa coluna não foi marcada mas a pergunta já tem uma resposta real (status Respondido/Respondido parcial), ela vira "Adicionar ação" automaticamente (marcado como "auto" na revisão). O mapeamento fica como rascunho aqui — só entra de vez no AS IS · Fluxo quando você clicar em "Mover para AS IS".</p>
       </div>
 
-      <div className="h2" style={{ marginBottom: 8, fontSize: 13 }}>1. Escolha a pasta de destino</div>
-      <PastaBar items={db.processos} hospital={pastaH} onChange={(h) => { setPastaH(h); setDraft(null); setMovido(false); }} />
-
-      {pastaH !== null && (<>
       <div className="card card-pad" style={{ marginBottom: 16 }}>
         <div className="between" style={{ marginBottom: rows.length ? 10 : 0 }}>
           <div>
-            <div className="h2">2. Importar planilha</div>
+            <div className="h2">1. Importar planilha</div>
             <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>{fileName ? <>Arquivo: <b>{fileName}</b> · {rows.length} linhas lidas</> : "Aceita .xlsx, .xls ou .csv"}</div>
           </div>
           <div className="row">
@@ -208,7 +204,7 @@ export function MapeamentoAI({ go }: { go?: (v: string) => void }) {
       {rows.length > 0 && (
         <>
           <div className="between" style={{ marginBottom: 10 }}>
-            <div className="h2">3. Revisar o que será gerado <span className="chip">{accepted.length}/{rows.length} selecionadas</span></div>
+            <div className="h2">2. Revisar o que será gerado <span className="chip">{accepted.length}/{rows.length} selecionadas</span></div>
             <div className="row" style={{ gap: 6 }}>
               <button className="btn ghost sm" onClick={() => toggleAll(true)}>Marcar geradoras</button>
               <button className="btn ghost sm" onClick={() => toggleAll(false)}>Desmarcar tudo</button>
@@ -269,17 +265,14 @@ export function MapeamentoAI({ go }: { go?: (v: string) => void }) {
 
           {movido && (
             <div className="card card-pad" style={{ marginTop: 14 }}>
-              <div className="h2" style={{ marginBottom: 8 }}>Movido para {pastaH === "__sem_pasta__" ? "Dados antigos" : pastaH}</div>
-              <p className="muted" style={{ fontSize: 12.5 }}>As caixas já existem de verdade no AS IS · Fluxo, dentro dessa pasta. Vá lá para arrastar, ligar e ajustar o layout.</p>
+              <div className="h2" style={{ marginBottom: 8 }}>Movido para o AS IS · Fluxo</div>
+              <p className="muted" style={{ fontSize: 12.5 }}>As caixas já existem de verdade no AS IS · Fluxo. Vá lá para arrastar, ligar e ajustar o layout.</p>
               {go && <button className="btn sm" style={{ marginTop: 8 }} onClick={() => go("flow")}>Abrir AS IS · Fluxo</button>}
             </div>
           )}
         </>
       )}
-      </>)}
-
-      {!(pastaH !== null) && <div className="empty">Escolha o hospital acima para começar.</div>}
-      {pastaH !== null && !rows.length && !error && (
+      {!rows.length && !error && (
         <div className="empty">Nenhuma planilha importada ainda. Escolha o arquivo acima para começar.</div>
       )}
     </div>

@@ -2,24 +2,24 @@ import { useState } from "react";
 import { useStore } from "../store";
 import { uid } from "../lib/derive";
 import { ETAPAS_UOW, MODOS_UOW, COBERTURAS, PLATAFORMAS_UOW, coberturaClass, modoClass } from "../lib/constants";
-import { Badge, Modal, Field, Ic, icons } from "../ui";
+import { Badge, Modal, Field, FilterMulti, inSel, Ic, icons } from "../ui";
 import type { DB } from "../types";
 
 export function UoWView() {
   const { db, upd } = useStore();
-  const [f, setF] = useState({ etapa: "", modo: "", cobertura: "", plataforma: "" });
+  const [f, setF] = useState<{ etapa: string[]; modo: string[]; cobertura: string[]; plataforma: string[] }>({ etapa: [], modo: [], cobertura: [], plataforma: [] });
   const [q, setQ] = useState("");
   const [edit, setEdit] = useState<any>(null);
-  const items = db.unitsOfWork.filter((u) => (!f.etapa || u.etapa === f.etapa) && (!f.modo || u.modo === f.modo) && (!f.cobertura || u.cobertura === f.cobertura) && (!f.plataforma || u.plataforma === f.plataforma) && (!q || (u.nome + u.id + (u.descricao || "")).toLowerCase().includes(q.toLowerCase())));
+  const items = db.unitsOfWork.filter((u) => inSel(f.etapa, u.etapa) && inSel(f.modo, u.modo) && inSel(f.cobertura, u.cobertura) && inSel(f.plataforma, u.plataforma) && (!q || (u.nome + u.id + (u.descricao || "")).toLowerCase().includes(q.toLowerCase())));
   return (
     <div>
       <div className="page-head"><div className="h1">Units of Work</div><p>Base oficial <b>RCM 2.0</b> — {db.unitsOfWork.length} unidades de trabalho nas 7 etapas do ciclo de RCM.</p></div>
       <div className="filters">
         <input type="text" placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 200 }} />
-        <select className="select-sm" value={f.etapa} onChange={(e) => setF({ ...f, etapa: e.target.value })}><option value="">Etapa</option>{ETAPAS_UOW.map((x) => <option key={x}>{x}</option>)}</select>
-        <select className="select-sm" value={f.modo} onChange={(e) => setF({ ...f, modo: e.target.value })}><option value="">Modo</option>{MODOS_UOW.map((x) => <option key={x}>{x}</option>)}</select>
-        <select className="select-sm" value={f.cobertura} onChange={(e) => setF({ ...f, cobertura: e.target.value })}><option value="">Cobertura</option>{COBERTURAS.map((x) => <option key={x}>{x}</option>)}</select>
-        <select className="select-sm" value={f.plataforma} onChange={(e) => setF({ ...f, plataforma: e.target.value })}><option value="">Plataforma</option>{PLATAFORMAS_UOW.map((x) => <option key={x}>{x}</option>)}</select>
+        <FilterMulti label="Etapa" options={ETAPAS_UOW.map((x) => ({ id: x, nome: x }))} value={f.etapa} onChange={(v) => setF({ ...f, etapa: v })} />
+        <FilterMulti label="Modo" options={MODOS_UOW.map((x) => ({ id: x, nome: x }))} value={f.modo} onChange={(v) => setF({ ...f, modo: v })} />
+        <FilterMulti label="Cobertura" options={COBERTURAS.map((x) => ({ id: x, nome: x }))} value={f.cobertura} onChange={(v) => setF({ ...f, cobertura: v })} />
+        <FilterMulti label="Plataforma" options={PLATAFORMAS_UOW.map((x) => ({ id: x, nome: x }))} value={f.plataforma} onChange={(v) => setF({ ...f, plataforma: v })} />
         <span className="chip">{items.length}</span>
         <button className="btn primary sm" style={{ marginLeft: "auto" }} onClick={() => setEdit({})}><Ic d={icons.plus} size={13} />Nova UoW</button>
       </div>

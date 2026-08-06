@@ -30,9 +30,11 @@ export interface Problema {
 }
 export interface Regra {
   id: string; nome: string; descricao: string; itensConta: string[];
-  operadoras: string[]; tiposAtendimento: string[]; problemas: string[];
+  operadoras: string[]; tiposAtendimento: string[]; problemas: string[]; escopos: string[];
   status: string; obs: string;
   pastaHospital?: string; pastaOperadora?: string;
+  // Efetividade (base de alertas do hospital) e metadados vindos da base de regras.
+  codigo?: string; alertasGerados?: number; alertasResolvidos?: number; isLLM?: boolean;
 }
 export interface GapManual {
   id: string; tipo: string; origem: string; processo: string; acao: string;
@@ -64,8 +66,35 @@ export interface Pendencia {
   id: string; nome: string; descricao: string;
   operadorasAplicaveis: string[]; setor: string; responsavel: string;
   alertaEmail: boolean; regras: string[]; status: string; obs: string;
+  area?: string; codigo?: string;
 }
 
+
+// Respostas do Questionário AS IS (checklist embutido). status: "" (vazio) | "check" | "x" (pendência).
+export interface ChecklistAnswer { status: string; comentario: string; editadoPor: string; editadoEm: string; }
+
+// Itens de checklist adicionados pelo usuário (a base embutida continua fixa no código).
+export interface ChecklistItemCustom { id: string; area: string; pergunta: string; }
+export interface TestItemCustom { id: string; tipo: string; secao: string; pergunta: string; }
+
+// Escopo genérico de regra, agrupado por item da conta. peso: 0..infinito (default 1);
+// operadoras vazio = vale para todas as operadoras.
+export interface Escopo { id: string; itemConta: string; nome: string; peso: number; operadoras: string[]; }
+
+// Inconsistência registrada durante a implantação. status: "Pendente" | "Resolvido".
+// Campos opcionais vêm da base de consistências da conta (Tasy): código, tipo e os flags de fechamento.
+export interface Inconsistencia {
+  id: string; nome: string; descricao: string; planoAcao: string; status: string;
+  codigo?: string; tipo?: string;
+  fechaConta?: boolean; fechaAtendimento?: boolean; fechaProtocolo?: boolean;
+}
+
+// Documento de referência, associável a várias entidades do app.
+export interface Documento {
+  id: string; nome: string; oQueValidar: string;
+  acoes: string[]; itensConta: string[]; regras: string[]; operadoras: string[];
+  pendencias: string[]; uows: string[]; sistemas: string[];
+}
 
 export interface DB {
   operadoras: Named[];
@@ -84,11 +113,19 @@ export interface DB {
   tobe: Record<string, TobeEntry>;
   problemas: Problema[];
   regras: Regra[];
+  escopos: Escopo[];
   gapsManuais: GapManual[];
   testes: Teste[];
   perguntas: Pergunta[];
   respostas: Record<string, RespostaEntry>;
   pendencias: Pendencia[];
+  checklist: Record<string, ChecklistAnswer>;
+  documentos: Documento[];
+  testChecklist: Record<string, ChecklistAnswer>;
+  regraTestes: Record<string, ChecklistAnswer>;
+  checklistExtra: ChecklistItemCustom[];
+  testExtra: TestItemCustom[];
+  inconsistencias: Inconsistencia[];
 }
 
 export type DBKey = keyof DB;
